@@ -1,6 +1,7 @@
 package nodes
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os/user"
 	"path/filepath"
@@ -88,6 +89,8 @@ func GetSSHKey(sshKeyname string) ([]byte, error) {
 		keyPath = filepath.Join(sshPathConfig.SSHPath, sshKeyname)
 	}
 	content, err := ioutil.ReadFile(keyPath)
+	fmt.Printf("SSH key path: %s", keyPath)
+	fmt.Printf("SSH key content: %s", content)
 	if err != nil {
 		return []byte{}, err
 	}
