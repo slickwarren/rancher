@@ -62,6 +62,8 @@ func (h *HostedAKSClusterProvisioningTestSuite) SetupSuite() {
 }
 
 func (h *HostedAKSClusterProvisioningTestSuite) TestProvisioningHostedAKS() {
+	h.T().Parallel()
+
 	tests := []struct {
 		name   string
 		client *rancher.Client
@@ -71,6 +73,7 @@ func (h *HostedAKSClusterProvisioningTestSuite) TestProvisioningHostedAKS() {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		var aksClusterConfig aks.ClusterConfig
 		config.LoadConfig(aks.AKSClusterConfigConfigurationFileKey, &aksClusterConfig)
 

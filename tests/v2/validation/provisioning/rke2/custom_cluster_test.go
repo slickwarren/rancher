@@ -23,9 +23,9 @@ import (
 
 type CustomClusterProvisioningTestSuite struct {
 	suite.Suite
-	client             *rancher.Client
+	client             rancher.Client
 	session            *session.Session
-	standardUserClient *rancher.Client
+	standardUserClient rancher.Client
 	provisioningConfig *provisioninginput.Config
 	isWindows          bool
 }
@@ -52,9 +52,9 @@ func (c *CustomClusterProvisioningTestSuite) SetupSuite() {
 	client, err := rancher.NewClient("", testSession)
 	require.NoError(c.T(), err)
 
-	c.client = client
+	c.client = *client
 
-	c.provisioningConfig.RKE2KubernetesVersions, err = kubernetesversions.Default(c.client, clusters.RKE2ClusterType.String(), c.provisioningConfig.RKE2KubernetesVersions)
+	c.provisioningConfig.RKE2KubernetesVersions, err = kubernetesversions.Default(&c.client, clusters.RKE2ClusterType.String(), c.provisioningConfig.RKE2KubernetesVersions)
 	require.NoError(c.T(), err)
 
 	enabled := true
@@ -75,10 +75,13 @@ func (c *CustomClusterProvisioningTestSuite) SetupSuite() {
 	standardUserClient, err := client.AsUser(newUser)
 	require.NoError(c.T(), err)
 
-	c.standardUserClient = standardUserClient
+	standardUserClient.Session.CleanupEnabled = false
+	c.standardUserClient = *standardUserClient
 }
 
 func (c *CustomClusterProvisioningTestSuite) TestProvisioningRKE2CustomCluster() {
+	c.T().Parallel()
+
 	nodeRolesAll := []provisioninginput.MachinePools{
 		provisioninginput.AllRolesMachinePool,
 	}
@@ -111,7 +114,7 @@ func (c *CustomClusterProvisioningTestSuite) TestProvisioningRKE2CustomCluster()
 
 	tests := []struct {
 		name         string
-		client       *rancher.Client
+		client       rancher.Client
 		machinePools []provisioninginput.MachinePools
 		isWindows    bool
 		runFlag      bool
@@ -123,6 +126,7 @@ func (c *CustomClusterProvisioningTestSuite) TestProvisioningRKE2CustomCluster()
 		{"5 nodes - 1 role per node + 2 windows workers " + provisioninginput.StandardClientName.String(), c.standardUserClient, nodeRolesDedicatedTwoWindows, true, c.client.Flags.GetValue(environmentflag.Long)},
 	}
 	for _, tt := range tests {
+		tt := tt
 		if !tt.runFlag {
 			c.T().Logf("SKIPPED")
 			continue
@@ -133,7 +137,10 @@ func (c *CustomClusterProvisioningTestSuite) TestProvisioningRKE2CustomCluster()
 		if (c.isWindows == tt.isWindows) || (c.isWindows && !tt.isWindows) {
 			provisioningConfig := *c.provisioningConfig
 			provisioningConfig.MachinePools = tt.machinePools
-			permutations.RunTestPermutations(&c.Suite, tt.name, tt.client, &provisioningConfig, permutations.RKE2CustomCluster, nil, nil)
+
+			c.Suite.T().Run(tt.name, func(t *testing.T) {
+				permutations.RunTestPermutations(&c.Suite, tt.name, &tt.client, &provisioningConfig, permutations.RKE2CustomCluster, nil, nil)
+			})
 		} else {
 			c.T().Skip("Skipping Windows tests")
 		}
@@ -141,24 +148,29 @@ func (c *CustomClusterProvisioningTestSuite) TestProvisioningRKE2CustomCluster()
 }
 
 func (c *CustomClusterProvisioningTestSuite) TestProvisioningRKE2CustomClusterDynamicInput() {
+	c.T().Parallel()
+
 	if len(c.provisioningConfig.MachinePools) == 0 {
 		c.T().Skip()
 	}
 
 	tests := []struct {
 		name   string
-		client *rancher.Client
+		client rancher.Client
 	}{
 		{provisioninginput.AdminClientName.String(), c.client},
 		{provisioninginput.StandardClientName.String(), c.standardUserClient},
 	}
 	for _, tt := range tests {
+		tt := tt
 		testSession := session.NewSession()
 		defer testSession.Cleanup()
 		_, err := tt.client.WithSession(testSession)
 		require.NoError(c.T(), err)
 
-		permutations.RunTestPermutations(&c.Suite, tt.name, tt.client, c.provisioningConfig, permutations.RKE2CustomCluster, nil, nil)
+		c.Suite.T().Run(tt.name, func(t *testing.T) {
+			permutations.RunTestPermutations(&c.Suite, tt.name, &tt.client, c.provisioningConfig, permutations.RKE2CustomCluster, nil, nil)
+		})
 	}
 }
 

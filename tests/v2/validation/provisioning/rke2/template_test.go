@@ -32,8 +32,8 @@ const (
 
 type ClusterTemplateTestSuite struct {
 	suite.Suite
-	client             *rancher.Client
-	standardUserClient *rancher.Client
+	client             rancher.Client
+	standardUserClient rancher.Client
 	session            *session.Session
 	templateConfig     *provisioninginput.TemplateConfig
 	cloudCredentials   *cloudcredentials.CloudCredential
@@ -52,7 +52,7 @@ func (r *ClusterTemplateTestSuite) SetupSuite() {
 
 	client, err := rancher.NewClient("", testSession)
 	require.NoError(r.T(), err)
-	r.client = client
+	r.client = *client
 
 	provider := provisioning.CreateProvider(r.templateConfig.TemplateProvider)
 	r.cloudCredentials, err = provider.CloudCredFunc(client)
@@ -60,20 +60,22 @@ func (r *ClusterTemplateTestSuite) SetupSuite() {
 }
 
 func (r *ClusterTemplateTestSuite) TestProvisionRKE2TemplateCluster() {
-	_, err := steve.CreateAndWaitForResource(r.client, stevetypes.ClusterRepo, r.templateConfig.Repo, true, 5*time.Second, defaults.FiveMinuteTimeout)
+	r.T().Parallel()
+
+	_, err := steve.CreateAndWaitForResource(&r.client, stevetypes.ClusterRepo, r.templateConfig.Repo, true, 5*time.Second, defaults.FiveMinuteTimeout)
 	require.NoError(r.T(), err)
 
-	k8sversions, err := kubernetesversions.Default(r.client, providerName, nil)
+	k8sversions, err := kubernetesversions.Default(&r.client, providerName, nil)
 	require.NoError(r.T(), err)
 
 	clusterName := namegenerator.AppendRandomString(providerName + "-template")
-	err = charts.InstallTemplateChart(r.client, r.templateConfig.Repo.ObjectMeta.Name, r.templateConfig.TemplateName, clusterName, k8sversions[0], r.cloudCredentials)
+	err = charts.InstallTemplateChart(&r.client, r.templateConfig.Repo.ObjectMeta.Name, r.templateConfig.TemplateName, clusterName, k8sversions[0], r.cloudCredentials)
 	require.NoError(r.T(), err)
 
-	_, cluster, err := clusters.GetProvisioningClusterByName(r.client, clusterName, fleetNamespace)
+	_, cluster, err := clusters.GetProvisioningClusterByName(&r.client, clusterName, fleetNamespace)
 	require.NoError(r.T(), err)
 
-	provisioning.VerifyCluster(r.T(), r.client, nil, cluster)
+	provisioning.VerifyCluster(r.T(), &r.client, nil, cluster)
 }
 
 // In order for 'go test' to run this suite, we need to create

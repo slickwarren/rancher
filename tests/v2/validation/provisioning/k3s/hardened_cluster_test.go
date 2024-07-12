@@ -26,9 +26,9 @@ import (
 
 type HardenedK3SClusterProvisioningTestSuite struct {
 	suite.Suite
-	client              *rancher.Client
+	client              rancher.Client
 	session             *session.Session
-	standardUserClient  *rancher.Client
+	standardUserClient  rancher.Client
 	provisioningConfig  *provisioninginput.Config
 	project             *management.Project
 	chartInstallOptions *charts.InstallOptions
@@ -49,9 +49,9 @@ func (c *HardenedK3SClusterProvisioningTestSuite) SetupSuite() {
 	client, err := rancher.NewClient("", testSession)
 	require.NoError(c.T(), err)
 
-	c.client = client
+	c.client = *client
 
-	c.provisioningConfig.K3SKubernetesVersions, err = kubernetesversions.Default(c.client, clusters.K3SClusterType.String(), c.provisioningConfig.K3SKubernetesVersions)
+	c.provisioningConfig.K3SKubernetesVersions, err = kubernetesversions.Default(&c.client, clusters.K3SClusterType.String(), c.provisioningConfig.K3SKubernetesVersions)
 	require.NoError(c.T(), err)
 
 	enabled := true
@@ -72,10 +72,13 @@ func (c *HardenedK3SClusterProvisioningTestSuite) SetupSuite() {
 	standardUserClient, err := client.AsUser(newUser)
 	require.NoError(c.T(), err)
 
-	c.standardUserClient = standardUserClient
+	standardUserClient.Session.CleanupEnabled = false
+	c.standardUserClient = *standardUserClient
 }
 
 func (c *HardenedK3SClusterProvisioningTestSuite) TestProvisioningK3SHardenedCluster() {
+	c.T().Parallel()
+
 	nodeRolesDedicated := []provisioninginput.MachinePools{provisioninginput.EtcdMachinePool, provisioninginput.ControlPlaneMachinePool, provisioninginput.WorkerMachinePool}
 
 	tests := []struct {
@@ -84,11 +87,13 @@ func (c *HardenedK3SClusterProvisioningTestSuite) TestProvisioningK3SHardenedClu
 		machinePools    []provisioninginput.MachinePools
 		scanProfileName string
 	}{
-		{"K3S CIS 1.8 Profile Hardened " + provisioninginput.StandardClientName.String(), c.standardUserClient, nodeRolesDedicated, "k3s-cis-1.8-profile-hardened"},
-		{"K3S CIS 1.8 Profile Permissive " + provisioninginput.StandardClientName.String(), c.standardUserClient, nodeRolesDedicated, "k3s-cis-1.8-profile-permissive"},
+		{"K3S CIS 1.8 Profile Hardened " + provisioninginput.StandardClientName.String(), &c.standardUserClient, nodeRolesDedicated, "k3s-cis-1.8-profile-hardened"},
+		{"K3S CIS 1.8 Profile Permissive " + provisioninginput.StandardClientName.String(), &c.standardUserClient, nodeRolesDedicated, "k3s-cis-1.8-profile-permissive"},
 	}
 	for _, tt := range tests {
-		c.Run(tt.name, func() {
+
+		tt := tt
+		c.Suite.T().Run(tt.name, func(t *testing.T) {
 			provisioningConfig := *c.provisioningConfig
 			provisioningConfig.MachinePools = tt.machinePools
 			provisioningConfig.Hardened = true

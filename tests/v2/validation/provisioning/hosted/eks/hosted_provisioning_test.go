@@ -61,6 +61,8 @@ func (h *HostedEKSClusterProvisioningTestSuite) SetupSuite() {
 }
 
 func (h *HostedEKSClusterProvisioningTestSuite) TestProvisioningHostedEKS() {
+	h.T().Parallel()
+
 	tests := []struct {
 		name   string
 		client *rancher.Client
@@ -70,6 +72,7 @@ func (h *HostedEKSClusterProvisioningTestSuite) TestProvisioningHostedEKS() {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		var eksClusterConfig eks.ClusterConfig
 		config.LoadConfig(eks.EKSClusterConfigConfigurationFileKey, &eksClusterConfig)
 

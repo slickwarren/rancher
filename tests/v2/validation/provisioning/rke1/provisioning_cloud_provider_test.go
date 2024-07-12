@@ -25,8 +25,8 @@ import (
 
 type RKE1CloudProviderTestSuite struct {
 	suite.Suite
-	client             *rancher.Client
-	standardUserClient *rancher.Client
+	client             rancher.Client
+	standardUserClient rancher.Client
 	session            *session.Session
 	provisioningConfig *provisioninginput.Config
 	chartConfig        *charts.Config
@@ -46,10 +46,10 @@ func (r *RKE1CloudProviderTestSuite) SetupSuite() {
 	client, err := rancher.NewClient("", testSession)
 	require.NoError(r.T(), err)
 
-	r.client = client
+	r.client = *client
 
 	r.provisioningConfig.RKE1KubernetesVersions, err = kubernetesversions.Default(
-		r.client, clusters.RKE1ClusterType.String(), r.provisioningConfig.RKE1KubernetesVersions)
+		&r.client, clusters.RKE1ClusterType.String(), r.provisioningConfig.RKE1KubernetesVersions)
 	require.NoError(r.T(), err)
 
 	enabled := true
@@ -70,10 +70,13 @@ func (r *RKE1CloudProviderTestSuite) SetupSuite() {
 	standardUserClient, err := client.AsUser(newUser)
 	require.NoError(r.T(), err)
 
-	r.standardUserClient = standardUserClient
+	standardUserClient.Session.CleanupEnabled = false
+	r.standardUserClient = *standardUserClient
 }
 
 func (r *RKE1CloudProviderTestSuite) TestAWSCloudProviderRKE1Cluster() {
+	r.T().Parallel()
+
 	nodeRolesDedicated := []provisioninginput.NodePools{provisioninginput.EtcdNodePool, provisioninginput.ControlPlaneNodePool, provisioninginput.WorkerNodePool}
 	nodeRolesDedicated[0].NodeRoles.Quantity = 3
 	nodeRolesDedicated[1].NodeRoles.Quantity = 2
@@ -82,7 +85,7 @@ func (r *RKE1CloudProviderTestSuite) TestAWSCloudProviderRKE1Cluster() {
 	tests := []struct {
 		name      string
 		nodePools []provisioninginput.NodePools
-		client    *rancher.Client
+		client    rancher.Client
 		runFlag   bool
 	}{
 		{"OutOfTree" + provisioninginput.StandardClientName.String(), nodeRolesDedicated, r.standardUserClient, r.client.Flags.GetValue(environmentflag.Long)},
@@ -93,6 +96,7 @@ func (r *RKE1CloudProviderTestSuite) TestAWSCloudProviderRKE1Cluster() {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		if !tt.runFlag {
 			r.T().Logf("SKIPPED")
 			continue
@@ -100,11 +104,16 @@ func (r *RKE1CloudProviderTestSuite) TestAWSCloudProviderRKE1Cluster() {
 		provisioningConfig := *r.provisioningConfig
 		provisioningConfig.CloudProvider = "external-aws"
 		provisioningConfig.NodePools = tt.nodePools
-		permutations.RunTestPermutations(&r.Suite, tt.name, tt.client, &provisioningConfig, permutations.RKE1ProvisionCluster, nil, nil)
+
+		r.Suite.T().Run(tt.name, func(t *testing.T) {
+			permutations.RunTestPermutations(&r.Suite, tt.name, &tt.client, &provisioningConfig, permutations.RKE1ProvisionCluster, nil, nil)
+		})
 	}
 }
 
 func (r *RKE1CloudProviderTestSuite) TestVsphereCloudProviderRKE1Cluster() {
+	r.T().Parallel()
+
 	nodeRolesDedicated := []provisioninginput.NodePools{provisioninginput.EtcdNodePool, provisioninginput.ControlPlaneNodePool, provisioninginput.WorkerNodePool}
 	nodeRolesDedicated[0].NodeRoles.Quantity = 3
 	nodeRolesDedicated[1].NodeRoles.Quantity = 2
@@ -113,7 +122,7 @@ func (r *RKE1CloudProviderTestSuite) TestVsphereCloudProviderRKE1Cluster() {
 	tests := []struct {
 		name      string
 		nodePools []provisioninginput.NodePools
-		client    *rancher.Client
+		client    rancher.Client
 		runFlag   bool
 	}{
 		{"OutOfTree" + provisioninginput.StandardClientName.String(), nodeRolesDedicated, r.standardUserClient, r.client.Flags.GetValue(environmentflag.Long)},
@@ -124,6 +133,7 @@ func (r *RKE1CloudProviderTestSuite) TestVsphereCloudProviderRKE1Cluster() {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		if !tt.runFlag {
 			r.T().Logf("SKIPPED")
 			continue
@@ -131,7 +141,10 @@ func (r *RKE1CloudProviderTestSuite) TestVsphereCloudProviderRKE1Cluster() {
 		provisioningConfig := *r.provisioningConfig
 		provisioningConfig.CloudProvider = "rancher-vsphere"
 		provisioningConfig.NodePools = tt.nodePools
-		permutations.RunTestPermutations(&r.Suite, tt.name, tt.client, &provisioningConfig, permutations.RKE1ProvisionCluster, nil, nil)
+
+		r.Suite.T().Run(tt.name, func(t *testing.T) {
+			permutations.RunTestPermutations(&r.Suite, tt.name, &tt.client, &provisioningConfig, permutations.RKE1ProvisionCluster, nil, nil)
+		})
 	}
 }
 

@@ -47,6 +47,8 @@ func (r *HostnameTruncationTestSuite) SetupSuite() {
 // for hostnames. The test starts at a minimum length limit of 10 characters, then a maximum length
 // limit of 63 characters and finally a middle length limit of 31 characters
 func (r *HostnameTruncationTestSuite) TestProvisioningRKE2ClusterTruncation() {
+	r.T().Parallel()
+
 	tests := []struct {
 		name                        string
 		machinePoolNameLengths      []int
@@ -84,8 +86,9 @@ func (r *HostnameTruncationTestSuite) TestProvisioningRKE2ClusterTruncation() {
 		},
 	}
 	for _, tt := range tests {
+		tt := tt
 		for _, defaultLength := range tt.defaultHostnameLengthLimits {
-			r.Run(tt.name+fmt.Sprintf("_defaultHostnameLimit:%d", defaultLength), func() {
+			r.Suite.T().Run(tt.name+fmt.Sprintf("_defaultHostnameLimit:%d", defaultLength), func(t *testing.T) {
 				var hostnamePools []machinepools.HostnameTruncation
 				for i, nameLength := range tt.machinePoolNameLengths {
 					currentTruncationPool := machinepools.HostnameTruncation{

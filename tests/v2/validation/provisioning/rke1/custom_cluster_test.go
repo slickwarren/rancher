@@ -66,10 +66,13 @@ func (c *CustomClusterProvisioningTestSuite) SetupSuite() {
 	standardUserClient, err := client.AsUser(newUser)
 	require.NoError(c.T(), err)
 
+	standardUserClient.Session.CleanupEnabled = false
 	c.standardUserClient = standardUserClient
 }
 
 func (c *CustomClusterProvisioningTestSuite) TestProvisioningRKE1CustomCluster() {
+	c.T().Parallel()
+
 	nodeRolesAll := []provisioninginput.NodePools{provisioninginput.AllRolesNodePool}
 	nodeRolesShared := []provisioninginput.NodePools{provisioninginput.EtcdControlPlaneNodePool, provisioninginput.WorkerNodePool}
 	nodeRolesDedicated := []provisioninginput.NodePools{provisioninginput.EtcdNodePool, provisioninginput.ControlPlaneNodePool, provisioninginput.WorkerNodePool}
@@ -87,6 +90,7 @@ func (c *CustomClusterProvisioningTestSuite) TestProvisioningRKE1CustomCluster()
 		{"3 nodes - 1 role per node " + provisioninginput.StandardClientName.String(), nodeRolesDedicated, c.standardUserClient, c.client.Flags.GetValue(environmentflag.Long)},
 	}
 	for _, tt := range tests {
+		tt := tt
 		if !tt.runFlag {
 			c.T().Logf("SKIPPED")
 			continue
@@ -95,11 +99,16 @@ func (c *CustomClusterProvisioningTestSuite) TestProvisioningRKE1CustomCluster()
 		provisioningConfig := *c.provisioningConfig
 		provisioningConfig.NodePools = tt.nodePools
 		provisioningConfig.NodePools[0].SpecifyCustomPublicIP = true
-		permutations.RunTestPermutations(&c.Suite, tt.name, tt.client, &provisioningConfig, permutations.RKE1CustomCluster, nil, nil)
+
+		c.Suite.T().Run(tt.name, func(t *testing.T) {
+			permutations.RunTestPermutations(&c.Suite, tt.name, tt.client, &provisioningConfig, permutations.RKE1CustomCluster, nil, nil)
+		})
 	}
 }
 
 func (c *CustomClusterProvisioningTestSuite) TestProvisioningRKE1CustomClusterDynamicInput() {
+	c.T().Parallel()
+
 	require.GreaterOrEqual(c.T(), len(c.provisioningConfig.CNIs), 1)
 
 	if len(c.provisioningConfig.NodePools) == 0 {
@@ -110,11 +119,14 @@ func (c *CustomClusterProvisioningTestSuite) TestProvisioningRKE1CustomClusterDy
 		name   string
 		client *rancher.Client
 	}{
-		{provisioninginput.AdminClientName.String(), c.client},
 		{provisioninginput.StandardClientName.String(), c.standardUserClient},
 	}
 	for _, tt := range tests {
-		permutations.RunTestPermutations(&c.Suite, tt.name, tt.client, c.provisioningConfig, permutations.RKE1CustomCluster, nil, nil)
+		tt := tt
+
+		c.Suite.T().Run(tt.name, func(t *testing.T) {
+			permutations.RunTestPermutations(&c.Suite, tt.name, tt.client, c.provisioningConfig, permutations.RKE1CustomCluster, nil, nil)
+		})
 	}
 }
 

@@ -22,9 +22,9 @@ import (
 
 type RKE2PSACTTestSuite struct {
 	suite.Suite
-	client             *rancher.Client
+	client             rancher.Client
 	session            *session.Session
-	standardUserClient *rancher.Client
+	standardUserClient rancher.Client
 	provisioningConfig *provisioninginput.Config
 }
 
@@ -42,10 +42,10 @@ func (r *RKE2PSACTTestSuite) SetupSuite() {
 	client, err := rancher.NewClient("", testSession)
 	require.NoError(r.T(), err)
 
-	r.client = client
+	r.client = *client
 
 	r.provisioningConfig.RKE2KubernetesVersions, err = kubernetesversions.Default(
-		r.client, clusters.RKE2ClusterType.String(), r.provisioningConfig.RKE2KubernetesVersions)
+		&r.client, clusters.RKE2ClusterType.String(), r.provisioningConfig.RKE2KubernetesVersions)
 	require.NoError(r.T(), err)
 
 	enabled := true
@@ -66,10 +66,13 @@ func (r *RKE2PSACTTestSuite) SetupSuite() {
 	standardUserClient, err := client.AsUser(newUser)
 	require.NoError(r.T(), err)
 
-	r.standardUserClient = standardUserClient
+	standardUserClient.Session.CleanupEnabled = false
+	r.standardUserClient = *standardUserClient
 }
 
 func (r *RKE2PSACTTestSuite) TestRKE2PSACTNodeDriverCluster() {
+	r.T().Parallel()
+
 	nodeRolesDedicated := []provisioninginput.MachinePools{
 		provisioninginput.EtcdMachinePool,
 		provisioninginput.ControlPlaneMachinePool,
@@ -80,7 +83,7 @@ func (r *RKE2PSACTTestSuite) TestRKE2PSACTNodeDriverCluster() {
 		name         string
 		machinePools []provisioninginput.MachinePools
 		psact        provisioninginput.PSACT
-		client       *rancher.Client
+		client       rancher.Client
 	}{
 		{
 			name:         "Rancher Privileged " + provisioninginput.StandardClientName.String(),
@@ -103,15 +106,20 @@ func (r *RKE2PSACTTestSuite) TestRKE2PSACTNodeDriverCluster() {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		provisioningConfig := *r.provisioningConfig
 		provisioningConfig.MachinePools = tt.machinePools
 		provisioningConfig.PSACT = string(tt.psact)
-		permutations.RunTestPermutations(&r.Suite, tt.name, tt.client, &provisioningConfig,
-			permutations.RKE2ProvisionCluster, nil, nil)
+		r.Suite.T().Run(tt.name, func(t *testing.T) {
+			permutations.RunTestPermutations(&r.Suite, tt.name, &tt.client, &provisioningConfig,
+				permutations.RKE2ProvisionCluster, nil, nil)
+		})
 	}
 }
 
 func (r *RKE2PSACTTestSuite) TestRKE2PSACTCustomCluster() {
+	r.T().Parallel()
+
 	nodeRolesDedicated := []provisioninginput.MachinePools{
 		provisioninginput.EtcdMachinePool,
 		provisioninginput.ControlPlaneMachinePool,
@@ -122,7 +130,7 @@ func (r *RKE2PSACTTestSuite) TestRKE2PSACTCustomCluster() {
 		name         string
 		machinePools []provisioninginput.MachinePools
 		psact        provisioninginput.PSACT
-		client       *rancher.Client
+		client       rancher.Client
 	}{
 		{
 			name:         "Rancher Privileged " + provisioninginput.StandardClientName.String(),
@@ -145,11 +153,14 @@ func (r *RKE2PSACTTestSuite) TestRKE2PSACTCustomCluster() {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		provisioningConfig := *r.provisioningConfig
 		provisioningConfig.MachinePools = tt.machinePools
 		provisioningConfig.PSACT = string(tt.psact)
-		permutations.RunTestPermutations(&r.Suite, tt.name, tt.client, &provisioningConfig,
-			permutations.RKE2CustomCluster, nil, nil)
+		r.Suite.T().Run(tt.name, func(t *testing.T) {
+			permutations.RunTestPermutations(&r.Suite, tt.name, &tt.client, &provisioningConfig,
+				permutations.RKE2CustomCluster, nil, nil)
+		})
 	}
 }
 

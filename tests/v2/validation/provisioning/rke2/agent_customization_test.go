@@ -22,9 +22,9 @@ import (
 
 type RKE2AgentCustomizationTestSuite struct {
 	suite.Suite
-	client             *rancher.Client
+	client             rancher.Client
 	session            *session.Session
-	standardUserClient *rancher.Client
+	standardUserClient rancher.Client
 	provisioningConfig *provisioninginput.Config
 }
 
@@ -41,7 +41,7 @@ func (r *RKE2AgentCustomizationTestSuite) SetupSuite() {
 	client, err := rancher.NewClient("", testSession)
 	require.NoError(r.T(), err)
 
-	r.client = client
+	r.client = *client
 
 	enabled := true
 	var testuser = namegen.AppendRandomString("testuser-")
@@ -61,10 +61,13 @@ func (r *RKE2AgentCustomizationTestSuite) SetupSuite() {
 	standardUserClient, err := client.AsUser(newUser)
 	require.NoError(r.T(), err)
 
-	r.standardUserClient = standardUserClient
+	standardUserClient.Session.CleanupEnabled = false
+	r.standardUserClient = *standardUserClient
 }
 
 func (r *RKE2AgentCustomizationTestSuite) TestProvisioningRKE2ClusterAgentCustomization() {
+	r.T().Parallel()
+
 	productionPool := []provisioninginput.MachinePools{provisioninginput.EtcdMachinePool, provisioninginput.ControlPlaneMachinePool, provisioninginput.WorkerMachinePool}
 	productionPool[0].MachinePoolConfig.Quantity = 3
 	productionPool[1].MachinePoolConfig.Quantity = 2
@@ -110,7 +113,7 @@ func (r *RKE2AgentCustomizationTestSuite) TestProvisioningRKE2ClusterAgentCustom
 	tests := []struct {
 		name         string
 		machinePools []provisioninginput.MachinePools
-		client       *rancher.Client
+		client       rancher.Client
 		agent        string
 	}{
 		{"Custom Fleet Agent - Standard User", productionPool, r.standardUserClient, customAgents[0]},
@@ -118,11 +121,10 @@ func (r *RKE2AgentCustomizationTestSuite) TestProvisioningRKE2ClusterAgentCustom
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		subSession := r.session.NewSession()
 		defer subSession.Cleanup()
 
-		client, err := tt.client.WithSession(subSession)
-		require.NoError(r.T(), err)
 		r.provisioningConfig.MachinePools = tt.machinePools
 
 		if tt.agent == "fleet-agent" {
@@ -135,11 +137,15 @@ func (r *RKE2AgentCustomizationTestSuite) TestProvisioningRKE2ClusterAgentCustom
 			r.provisioningConfig.FleetAgent = nil
 		}
 
-		permutations.RunTestPermutations(&r.Suite, tt.name, client, r.provisioningConfig, permutations.RKE2ProvisionCluster, nil, nil)
+		r.Suite.T().Run(tt.name, func(t *testing.T) {
+			permutations.RunTestPermutations(&r.Suite, tt.name, &tt.client, r.provisioningConfig, permutations.RKE2ProvisionCluster, nil, nil)
+		})
 	}
 }
 
 func (r *RKE2AgentCustomizationTestSuite) TestFailureProvisioningRKE2ClusterAgentCustomization() {
+	r.T().Parallel()
+
 	productionPool := []provisioninginput.MachinePools{provisioninginput.EtcdMachinePool, provisioninginput.ControlPlaneMachinePool, provisioninginput.WorkerMachinePool}
 	productionPool[0].MachinePoolConfig.Quantity = 3
 	productionPool[1].MachinePoolConfig.Quantity = 2
@@ -160,7 +166,7 @@ func (r *RKE2AgentCustomizationTestSuite) TestFailureProvisioningRKE2ClusterAgen
 	tests := []struct {
 		name         string
 		machinePools []provisioninginput.MachinePools
-		client       *rancher.Client
+		client       rancher.Client
 		agent        string
 	}{
 		{"Invalid Custom Fleet Agent - Standard User", productionPool, r.standardUserClient, customAgents[0]},
@@ -168,11 +174,10 @@ func (r *RKE2AgentCustomizationTestSuite) TestFailureProvisioningRKE2ClusterAgen
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		subSession := r.session.NewSession()
 		defer subSession.Cleanup()
 
-		client, err := tt.client.WithSession(subSession)
-		require.NoError(r.T(), err)
 		r.provisioningConfig.MachinePools = tt.machinePools
 
 		if tt.agent == "fleet-agent" {
@@ -185,12 +190,14 @@ func (r *RKE2AgentCustomizationTestSuite) TestFailureProvisioningRKE2ClusterAgen
 			r.provisioningConfig.FleetAgent = nil
 		}
 
-		rke2Provider, _, _, kubeVersions := permutations.GetClusterProvider(permutations.RKE2ProvisionCluster, r.provisioningConfig.Providers[0], r.provisioningConfig)
-		testClusterConfig := clusters.ConvertConfigToClusterConfig(r.provisioningConfig)
-		testClusterConfig.KubernetesVersion = kubeVersions[0]
+		r.Suite.T().Run(tt.name, func(t *testing.T) {
+			rke2Provider, _, _, kubeVersions := permutations.GetClusterProvider(permutations.RKE2ProvisionCluster, r.provisioningConfig.Providers[0], r.provisioningConfig)
+			testClusterConfig := clusters.ConvertConfigToClusterConfig(r.provisioningConfig)
+			testClusterConfig.KubernetesVersion = kubeVersions[0]
 
-		_, err = provisioning.CreateProvisioningCluster(client, *rke2Provider, testClusterConfig, nil)
-		require.Error(r.T(), err)
+			_, err := provisioning.CreateProvisioningCluster(&tt.client, *rke2Provider, testClusterConfig, nil)
+			require.Error(r.T(), err)
+		})
 	}
 }
 

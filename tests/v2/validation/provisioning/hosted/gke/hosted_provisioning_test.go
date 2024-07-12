@@ -61,6 +61,8 @@ func (h *HostedGKEClusterProvisioningTestSuite) SetupSuite() {
 }
 
 func (h *HostedGKEClusterProvisioningTestSuite) TestProvisioningHostedGKE() {
+	h.T().Parallel()
+
 	tests := []struct {
 		name   string
 		client *rancher.Client
@@ -70,6 +72,8 @@ func (h *HostedGKEClusterProvisioningTestSuite) TestProvisioningHostedGKE() {
 	}
 
 	for _, tt := range tests {
+		tt := tt
+
 		var gkeClusterConfig gke.ClusterConfig
 		config.LoadConfig(gke.GKEClusterConfigConfigurationFileKey, &gkeClusterConfig)
 		clusterObject, err := provisioning.CreateProvisioningGKEHostedCluster(tt.client, gkeClusterConfig)

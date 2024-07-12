@@ -19,7 +19,7 @@ import (
 type KdmChecksTestSuite struct {
 	suite.Suite
 	session            *session.Session
-	client             *rancher.Client
+	client             rancher.Client
 	ns                 string
 	provisioningConfig *provisioninginput.Config
 }
@@ -45,14 +45,16 @@ func (k *KdmChecksTestSuite) SetupSuite() {
 	client, err := rancher.NewClient("", testSession)
 	require.NoError(k.T(), err)
 
-	k.client = client
+	k.client = *client
 }
 
 func (k *KdmChecksTestSuite) TestRKE1K8sVersions() {
+	k.T().Parallel()
+
 	logrus.Infof("checking for valid k8s versions..")
 	require.GreaterOrEqual(k.T(), len(k.provisioningConfig.RKE1KubernetesVersions), 1)
 	// fetching all available k8s versions from rancher
-	releasedK8sVersions, _ := kubernetesversions.ListRKE1AllVersions(k.client)
+	releasedK8sVersions, _ := kubernetesversions.ListRKE1AllVersions(&k.client)
 	logrus.Info("expected k8s versions : ", k.provisioningConfig.RKE1KubernetesVersions)
 	logrus.Info("k8s versions available on rancher server : ", releasedK8sVersions)
 	for _, expectedK8sVersion := range k.provisioningConfig.RKE1KubernetesVersions {
@@ -61,6 +63,8 @@ func (k *KdmChecksTestSuite) TestRKE1K8sVersions() {
 }
 
 func (k *KdmChecksTestSuite) TestProvisioningSingleNodeRKE1Clusters() {
+	k.T().Parallel()
+
 	require.GreaterOrEqual(k.T(), len(k.provisioningConfig.Providers), 1)
 	require.GreaterOrEqual(k.T(), len(k.provisioningConfig.CNIs), 1)
 

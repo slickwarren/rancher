@@ -21,9 +21,9 @@ import (
 
 type RKE2ACETestSuite struct {
 	suite.Suite
-	client             *rancher.Client
+	client             rancher.Client
 	session            *session.Session
-	standardUserClient *rancher.Client
+	standardUserClient rancher.Client
 	provisioningConfig *provisioninginput.Config
 }
 
@@ -40,7 +40,7 @@ func (r *RKE2ACETestSuite) SetupSuite() {
 	client, err := rancher.NewClient("", testSession)
 	require.NoError(r.T(), err)
 
-	r.client = client
+	r.client = *client
 
 	enabled := true
 	var testuser = namegen.AppendRandomString("testuser-")
@@ -60,10 +60,13 @@ func (r *RKE2ACETestSuite) SetupSuite() {
 	standardUserClient, err := client.AsUser(newUser)
 	require.NoError(r.T(), err)
 
-	r.standardUserClient = standardUserClient
+	standardUserClient.Session.CleanupEnabled = false
+	r.standardUserClient = *standardUserClient
 }
 
 func (r *RKE2ACETestSuite) TestProvisioningRKE2ClusterACE() {
+	r.T().Parallel()
+
 	nodeRoles0 := []provisioninginput.MachinePools{
 		{
 			MachinePoolConfig: machinepools.MachinePoolConfig{
@@ -100,20 +103,24 @@ func (r *RKE2ACETestSuite) TestProvisioningRKE2ClusterACE() {
 	tests := []struct {
 		name         string
 		machinePools []provisioninginput.MachinePools
-		client       *rancher.Client
+		client       rancher.Client
 	}{
 		{"Multiple Control Planes - Standard", nodeRoles0, r.standardUserClient},
 	}
 	require.NotNil(r.T(), r.provisioningConfig.Networking.LocalClusterAuthEndpoint)
 	// Test is obsolete when ACE is not set.
 	for _, tt := range tests {
+		tt := tt
 		subSession := r.session.NewSession()
 		defer subSession.Cleanup()
 
 		client, err := tt.client.WithSession(subSession)
 		require.NoError(r.T(), err)
 		r.provisioningConfig.MachinePools = tt.machinePools
-		permutations.RunTestPermutations(&r.Suite, tt.name, client, r.provisioningConfig, permutations.RKE2ProvisionCluster, nil, nil)
+
+		r.Suite.T().Run(tt.name, func(t *testing.T) {
+			permutations.RunTestPermutations(&r.Suite, tt.name, client, r.provisioningConfig, permutations.RKE2ProvisionCluster, nil, nil)
+		})
 	}
 }
 

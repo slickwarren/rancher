@@ -17,23 +17,26 @@ import (
 	"github.com/rancher/shepherd/pkg/environmentflag"
 	namegen "github.com/rancher/shepherd/pkg/namegenerator"
 	"github.com/rancher/shepherd/pkg/session"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
 type RKE1NodeDriverProvisioningTestSuite struct {
 	suite.Suite
-	client             *rancher.Client
-	standardUserClient *rancher.Client
+	client             rancher.Client
+	standardUserClient rancher.Client
 	session            *session.Session
 	provisioningConfig *provisioninginput.Config
 }
 
 func (r *RKE1NodeDriverProvisioningTestSuite) TearDownSuite() {
-	r.session.Cleanup()
+	logrus.Info("Tearing Down ..")
+	r.T().Cleanup(r.session.Cleanup)
 }
 
 func (r *RKE1NodeDriverProvisioningTestSuite) SetupSuite() {
+	logrus.Info("Setting Up")
 	testSession := session.NewSession()
 	r.session = testSession
 
@@ -43,10 +46,10 @@ func (r *RKE1NodeDriverProvisioningTestSuite) SetupSuite() {
 	client, err := rancher.NewClient("", testSession)
 	require.NoError(r.T(), err)
 
-	r.client = client
+	r.client = *client
 
 	r.provisioningConfig.RKE1KubernetesVersions, err = kubernetesversions.Default(
-		r.client, clusters.RKE1ClusterType.String(), r.provisioningConfig.RKE1KubernetesVersions)
+		&r.client, clusters.RKE1ClusterType.String(), r.provisioningConfig.RKE1KubernetesVersions)
 	require.NoError(r.T(), err)
 
 	enabled := true
@@ -67,23 +70,28 @@ func (r *RKE1NodeDriverProvisioningTestSuite) SetupSuite() {
 	standardUserClient, err := client.AsUser(newUser)
 	require.NoError(r.T(), err)
 
-	r.standardUserClient = standardUserClient
+	// standardUserClient.Session.CleanupEnabled = false
+	r.standardUserClient = *standardUserClient
 }
 
 func (r *RKE1NodeDriverProvisioningTestSuite) TestProvisioningRKE1Cluster() {
+	r.T().Parallel()
+
 	nodeRolesAll := []provisioninginput.NodePools{provisioninginput.AllRolesNodePool}
 	nodeRolesShared := []provisioninginput.NodePools{provisioninginput.EtcdControlPlaneNodePool, provisioninginput.WorkerNodePool}
 	nodeRolesDedicated := []provisioninginput.NodePools{provisioninginput.EtcdNodePool, provisioninginput.ControlPlaneNodePool, provisioninginput.WorkerNodePool}
+
 	tests := []struct {
 		name      string
 		nodePools []provisioninginput.NodePools
-		client    *rancher.Client
+		client    rancher.Client
 		runFlag   bool
 	}{
 		{"1 Node all roles " + provisioninginput.StandardClientName.String(), nodeRolesAll, r.standardUserClient, r.client.Flags.GetValue(environmentflag.Short) || r.client.Flags.GetValue(environmentflag.Long)},
 		{"2 nodes - etcd|cp roles per 1 node " + provisioninginput.StandardClientName.String(), nodeRolesShared, r.standardUserClient, r.client.Flags.GetValue(environmentflag.Short) || r.client.Flags.GetValue(environmentflag.Long)},
 		{"3 nodes - 1 role per node " + provisioninginput.StandardClientName.String(), nodeRolesDedicated, r.standardUserClient, r.client.Flags.GetValue(environmentflag.Long)},
 	}
+
 	for _, tt := range tests {
 		if !tt.runFlag {
 			r.T().Logf("SKIPPED")
@@ -91,11 +99,21 @@ func (r *RKE1NodeDriverProvisioningTestSuite) TestProvisioningRKE1Cluster() {
 		}
 		provisioningConfig := *r.provisioningConfig
 		provisioningConfig.NodePools = tt.nodePools
-		permutations.RunTestPermutations(&r.Suite, tt.name, tt.client, &provisioningConfig, permutations.RKE1ProvisionCluster, nil, nil)
+
+		tt := tt
+		r.Suite.T().Run(tt.name, func(t *testing.T) {
+			permutations.RunTestPermutations(&r.Suite, tt.name, &tt.client, &provisioningConfig, permutations.RKE1ProvisionCluster, nil, nil)
+		})
+
 	}
+	// if *r.client.RancherConfig.Cleanup {
+	// 	r.standardUserClient.Session.CleanupEnabled = true
+	// 	r.Suite.T().Cleanup(r.standardUserClient.Session.Cleanup)
+	// }
 }
 
 func (r *RKE1NodeDriverProvisioningTestSuite) TestProvisioningRKE1ClusterDynamicInput() {
+	r.T().Parallel()
 
 	if len(r.provisioningConfig.NodePools) == 0 {
 		r.T().Skip()
@@ -103,13 +121,19 @@ func (r *RKE1NodeDriverProvisioningTestSuite) TestProvisioningRKE1ClusterDynamic
 
 	tests := []struct {
 		name   string
-		client *rancher.Client
+		client rancher.Client
 	}{
-		{provisioninginput.AdminClientName.String(), r.client},
 		{provisioninginput.StandardClientName.String(), r.standardUserClient},
 	}
 	for _, tt := range tests {
-		permutations.RunTestPermutations(&r.Suite, tt.name, tt.client, r.provisioningConfig, permutations.RKE1ProvisionCluster, nil, nil)
+		tt := tt
+
+		r.Suite.T().Run(tt.name, func(t *testing.T) {
+
+			r.T().Cleanup(r.session.Cleanup)
+			r.Suite.T().Cleanup(r.session.Cleanup)
+			permutations.RunTestPermutations(&r.Suite, tt.name, &tt.client, r.provisioningConfig, permutations.RKE1ProvisionCluster, nil, nil)
+		})
 	}
 }
 

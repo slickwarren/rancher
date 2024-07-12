@@ -22,9 +22,9 @@ import (
 
 type K3SPSACTTestSuite struct {
 	suite.Suite
-	client             *rancher.Client
+	client             rancher.Client
 	session            *session.Session
-	standardUserClient *rancher.Client
+	standardUserClient rancher.Client
 	provisioningConfig *provisioninginput.Config
 }
 
@@ -42,10 +42,10 @@ func (k *K3SPSACTTestSuite) SetupSuite() {
 	client, err := rancher.NewClient("", testSession)
 	require.NoError(k.T(), err)
 
-	k.client = client
+	k.client = *client
 
 	k.provisioningConfig.K3SKubernetesVersions, err = kubernetesversions.Default(
-		k.client, clusters.K3SClusterType.String(), k.provisioningConfig.K3SKubernetesVersions)
+		&k.client, clusters.K3SClusterType.String(), k.provisioningConfig.K3SKubernetesVersions)
 	require.NoError(k.T(), err)
 
 	enabled := true
@@ -66,7 +66,8 @@ func (k *K3SPSACTTestSuite) SetupSuite() {
 	standardUserClient, err := client.AsUser(newUser)
 	require.NoError(k.T(), err)
 
-	k.standardUserClient = standardUserClient
+	standardUserClient.Session.CleanupEnabled = false
+	k.standardUserClient = *standardUserClient
 }
 
 func (k *K3SPSACTTestSuite) TestK3SPSACTNodeDriverCluster() {
@@ -80,7 +81,7 @@ func (k *K3SPSACTTestSuite) TestK3SPSACTNodeDriverCluster() {
 		name         string
 		machinePools []provisioninginput.MachinePools
 		psact        provisioninginput.PSACT
-		client       *rancher.Client
+		client       rancher.Client
 	}{
 		{
 			name:         "Rancher Privileged " + provisioninginput.StandardClientName.String(),
@@ -106,12 +107,18 @@ func (k *K3SPSACTTestSuite) TestK3SPSACTNodeDriverCluster() {
 		provisioningConfig := *k.provisioningConfig
 		provisioningConfig.MachinePools = tt.machinePools
 		provisioningConfig.PSACT = string(tt.psact)
-		permutations.RunTestPermutations(&k.Suite, tt.name, tt.client, &provisioningConfig,
-			permutations.K3SProvisionCluster, nil, nil)
+
+		tt := tt
+		k.Suite.T().Run(tt.name, func(t *testing.T) {
+			permutations.RunTestPermutations(&k.Suite, tt.name, &tt.client, &provisioningConfig,
+				permutations.K3SProvisionCluster, nil, nil)
+		})
 	}
 }
 
 func (k *K3SPSACTTestSuite) TestK3SPSACTCustomCluster() {
+	k.T().Parallel()
+
 	nodeRolesDedicated := []provisioninginput.MachinePools{
 		provisioninginput.EtcdMachinePool,
 		provisioninginput.ControlPlaneMachinePool,
@@ -122,7 +129,7 @@ func (k *K3SPSACTTestSuite) TestK3SPSACTCustomCluster() {
 		name         string
 		machinePools []provisioninginput.MachinePools
 		psact        provisioninginput.PSACT
-		client       *rancher.Client
+		client       rancher.Client
 	}{
 		{
 			"Rancher Privileged " + provisioninginput.StandardClientName.String(),
@@ -148,8 +155,12 @@ func (k *K3SPSACTTestSuite) TestK3SPSACTCustomCluster() {
 		provisioningConfig := *k.provisioningConfig
 		provisioningConfig.MachinePools = tt.machinePools
 		provisioningConfig.PSACT = string(tt.psact)
-		permutations.RunTestPermutations(&k.Suite, tt.name, tt.client, &provisioningConfig,
-			permutations.K3SCustomCluster, nil, nil)
+
+		tt := tt
+		k.Suite.T().Run(tt.name, func(t *testing.T) {
+			permutations.RunTestPermutations(&k.Suite, tt.name, &tt.client, &provisioningConfig,
+				permutations.K3SCustomCluster, nil, nil)
+		})
 	}
 }
 

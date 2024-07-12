@@ -36,7 +36,7 @@ const (
 type RegistryTestSuite struct {
 	suite.Suite
 	session                        *session.Session
-	client                         *rancher.Client
+	client                         rancher.Client
 	clusterLocalID                 string
 	localClusterGlobalRegistryHost string
 	rancherUsesRegistry            bool
@@ -56,7 +56,7 @@ func (rt *RegistryTestSuite) SetupSuite() {
 
 	client, err := rancher.NewClient("", testSession)
 	require.NoError(rt.T(), err)
-	rt.client = client
+	rt.client = *client
 
 	corralConfig := corral.Configurations()
 	registriesConfig := new(Registries)
@@ -203,6 +203,8 @@ func (rt *RegistryTestSuite) SetupSuite() {
 }
 
 func (rt *RegistryTestSuite) TestRegistriesRKE() {
+	rt.T().Parallel()
+
 	subSession := session.NewSession()
 	defer subSession.Cleanup()
 
@@ -255,12 +257,13 @@ func (rt *RegistryTestSuite) TestRegistriesRKE() {
 		provisioning.VerifyRKE1Cluster(rt.T(), subClient, testConfig, clusterObject)
 	}
 
-	podErrors := pods.StatusPods(rt.client, rt.clusterLocalID)
+	podErrors := pods.StatusPods(&rt.client, rt.clusterLocalID)
 	assert.Empty(rt.T(), podErrors)
-	registries.CheckAllClusterPodsForRegistryPrefix(rt.client, rt.clusterLocalID, rt.localClusterGlobalRegistryHost)
+	registries.CheckAllClusterPodsForRegistryPrefix(&rt.client, rt.clusterLocalID, rt.localClusterGlobalRegistryHost)
 }
 
 func (rt *RegistryTestSuite) TestRegistriesK3S() {
+	rt.T().Parallel()
 	subSession := session.NewSession()
 	defer subSession.Cleanup()
 
@@ -303,12 +306,13 @@ func (rt *RegistryTestSuite) TestRegistriesK3S() {
 		provisioning.VerifyCluster(rt.T(), subClient, testConfig, clusterObject)
 	}
 
-	podErrors := pods.StatusPods(rt.client, rt.clusterLocalID)
+	podErrors := pods.StatusPods(&rt.client, rt.clusterLocalID)
 	assert.Empty(rt.T(), podErrors)
-	registries.CheckAllClusterPodsForRegistryPrefix(rt.client, rt.clusterLocalID, rt.localClusterGlobalRegistryHost)
+	registries.CheckAllClusterPodsForRegistryPrefix(&rt.client, rt.clusterLocalID, rt.localClusterGlobalRegistryHost)
 }
 
 func (rt *RegistryTestSuite) TestRegistriesRKE2() {
+	rt.T().Parallel()
 	subSession := session.NewSession()
 	defer subSession.Cleanup()
 
@@ -351,9 +355,9 @@ func (rt *RegistryTestSuite) TestRegistriesRKE2() {
 		provisioning.VerifyCluster(rt.T(), subClient, testConfig, clusterObject)
 	}
 
-	podErrors := pods.StatusPods(rt.client, rt.clusterLocalID)
+	podErrors := pods.StatusPods(&rt.client, rt.clusterLocalID)
 	assert.Empty(rt.T(), podErrors)
-	registries.CheckAllClusterPodsForRegistryPrefix(rt.client, rt.clusterLocalID, rt.localClusterGlobalRegistryHost)
+	registries.CheckAllClusterPodsForRegistryPrefix(&rt.client, rt.clusterLocalID, rt.localClusterGlobalRegistryHost)
 }
 
 func (rt *RegistryTestSuite) configureRKE2K3SRegistry(registryName string, testConfig *clusters.ClusterConfig) *clusters.ClusterConfig {

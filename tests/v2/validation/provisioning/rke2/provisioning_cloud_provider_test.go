@@ -24,9 +24,9 @@ import (
 
 type RKE2CloudProviderTestSuite struct {
 	suite.Suite
-	client             *rancher.Client
+	client             rancher.Client
 	session            *session.Session
-	standardUserClient *rancher.Client
+	standardUserClient rancher.Client
 	provisioningConfig *provisioninginput.Config
 }
 
@@ -42,10 +42,10 @@ func (r *RKE2CloudProviderTestSuite) SetupSuite() {
 
 	client, err := rancher.NewClient("", testSession)
 	require.NoError(r.T(), err)
-	r.client = client
+	r.client = *client
 
 	r.provisioningConfig.RKE2KubernetesVersions, err = kubernetesversions.Default(
-		r.client, clusters.RKE2ClusterType.String(), r.provisioningConfig.RKE2KubernetesVersions)
+		&r.client, clusters.RKE2ClusterType.String(), r.provisioningConfig.RKE2KubernetesVersions)
 	require.NoError(r.T(), err)
 
 	enabled := true
@@ -66,10 +66,14 @@ func (r *RKE2CloudProviderTestSuite) SetupSuite() {
 	standardUserClient, err := client.AsUser(newUser)
 	require.NoError(r.T(), err)
 
-	r.standardUserClient = standardUserClient
+	standardUserClient.Session.CleanupEnabled = false
+
+	r.standardUserClient = *standardUserClient
 }
 
 func (r *RKE2CloudProviderTestSuite) TestAWSCloudProviderCluster() {
+	r.T().Parallel()
+
 	nodeRolesDedicated := []provisioninginput.MachinePools{provisioninginput.EtcdMachinePool, provisioninginput.ControlPlaneMachinePool, provisioninginput.WorkerMachinePool}
 	nodeRolesDedicated[0].MachinePoolConfig.Quantity = 3
 	nodeRolesDedicated[1].MachinePoolConfig.Quantity = 2
@@ -78,7 +82,7 @@ func (r *RKE2CloudProviderTestSuite) TestAWSCloudProviderCluster() {
 	tests := []struct {
 		name         string
 		machinePools []provisioninginput.MachinePools
-		client       *rancher.Client
+		client       rancher.Client
 		runFlag      bool
 	}{
 		{"OutOfTree" + provisioninginput.StandardClientName.String(), nodeRolesDedicated, r.standardUserClient, r.client.Flags.GetValue(environmentflag.Long)},
@@ -93,15 +97,20 @@ func (r *RKE2CloudProviderTestSuite) TestAWSCloudProviderCluster() {
 			r.T().Logf("SKIPPED")
 			continue
 		}
-
+		tt := tt
 		provisioningConfig := *r.provisioningConfig
 		provisioningConfig.CloudProvider = "aws"
 		provisioningConfig.MachinePools = tt.machinePools
-		permutations.RunTestPermutations(&r.Suite, tt.name, tt.client, &provisioningConfig, permutations.RKE2ProvisionCluster, nil, nil)
+
+		r.Suite.T().Run(tt.name, func(t *testing.T) {
+			permutations.RunTestPermutations(&r.Suite, tt.name, &tt.client, &provisioningConfig, permutations.RKE2ProvisionCluster, nil, nil)
+		})
 	}
 }
 
 func (r *RKE2CloudProviderTestSuite) TestVsphereCloudProviderCluster() {
+	r.T().Parallel()
+
 	nodeRolesDedicated := []provisioninginput.MachinePools{provisioninginput.EtcdMachinePool, provisioninginput.ControlPlaneMachinePool, provisioninginput.WorkerMachinePool}
 	nodeRolesDedicated[0].MachinePoolConfig.Quantity = 3
 	nodeRolesDedicated[1].MachinePoolConfig.Quantity = 2
@@ -110,7 +119,7 @@ func (r *RKE2CloudProviderTestSuite) TestVsphereCloudProviderCluster() {
 	tests := []struct {
 		name         string
 		machinePools []provisioninginput.MachinePools
-		client       *rancher.Client
+		client       rancher.Client
 		runFlag      bool
 	}{
 		{"OutOfTree" + provisioninginput.StandardClientName.String(), nodeRolesDedicated, r.standardUserClient, r.client.Flags.GetValue(environmentflag.Long)},
@@ -125,11 +134,15 @@ func (r *RKE2CloudProviderTestSuite) TestVsphereCloudProviderCluster() {
 			r.T().Logf("SKIPPED")
 			continue
 		}
+		tt := tt
 
 		provisioningConfig := *r.provisioningConfig
 		provisioningConfig.CloudProvider = "rancher-vsphere"
 		provisioningConfig.MachinePools = tt.machinePools
-		permutations.RunTestPermutations(&r.Suite, tt.name, tt.client, &provisioningConfig, permutations.RKE2ProvisionCluster, nil, nil)
+
+		r.Suite.T().Run(tt.name, func(t *testing.T) {
+			permutations.RunTestPermutations(&r.Suite, tt.name, &tt.client, &provisioningConfig, permutations.RKE2ProvisionCluster, nil, nil)
+		})
 	}
 }
 

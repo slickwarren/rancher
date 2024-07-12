@@ -82,6 +82,8 @@ func (r *ImportProvisioningTestSuite) SetupSuite() {
 }
 
 func (r *ImportProvisioningTestSuite) TestProvisioningImportK3SCluster() {
+	r.T().Parallel()
+
 	corralPackage := corral.PackagesConfig()
 
 	if corralPackage.HasCustomRepo != "" {

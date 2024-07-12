@@ -17,34 +17,37 @@ import (
 	"github.com/rancher/shepherd/pkg/environmentflag"
 	namegen "github.com/rancher/shepherd/pkg/namegenerator"
 	"github.com/rancher/shepherd/pkg/session"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
 type RKE2NodeDriverProvisioningTestSuite struct {
 	suite.Suite
-	client             *rancher.Client
+	client             rancher.Client
 	session            *session.Session
-	standardUserClient *rancher.Client
+	standardUserClient rancher.Client
 	provisioningConfig *provisioninginput.Config
 }
 
 func (r *RKE2NodeDriverProvisioningTestSuite) TearDownSuite() {
+	logrus.Info("Cleaning up now...")
 	r.session.Cleanup()
 }
 
 func (r *RKE2NodeDriverProvisioningTestSuite) SetupSuite() {
 	testSession := session.NewSession()
 	r.session = testSession
+
 	r.provisioningConfig = new(provisioninginput.Config)
 	config.LoadConfig(provisioninginput.ConfigurationFileKey, r.provisioningConfig)
 
 	client, err := rancher.NewClient("", testSession)
 	require.NoError(r.T(), err)
-	r.client = client
+	r.client = *client
 
 	r.provisioningConfig.RKE2KubernetesVersions, err = kubernetesversions.Default(
-		r.client, clusters.RKE2ClusterType.String(), r.provisioningConfig.RKE2KubernetesVersions)
+		&r.client, clusters.RKE2ClusterType.String(), r.provisioningConfig.RKE2KubernetesVersions)
 	require.NoError(r.T(), err)
 
 	enabled := true
@@ -64,11 +67,14 @@ func (r *RKE2NodeDriverProvisioningTestSuite) SetupSuite() {
 
 	standardUserClient, err := client.AsUser(newUser)
 	require.NoError(r.T(), err)
+	standardUserClient.Session.CleanupEnabled = false
 
-	r.standardUserClient = standardUserClient
+	r.standardUserClient = *standardUserClient
 }
 
 func (r *RKE2NodeDriverProvisioningTestSuite) TestProvisioningRKE2Cluster() {
+	r.T().Parallel()
+
 	nodeRolesAll := []provisioninginput.MachinePools{provisioninginput.AllRolesMachinePool}
 	nodeRolesShared := []provisioninginput.MachinePools{provisioninginput.EtcdControlPlaneMachinePool, provisioninginput.WorkerMachinePool}
 	nodeRolesDedicated := []provisioninginput.MachinePools{provisioninginput.EtcdMachinePool, provisioninginput.ControlPlaneMachinePool, provisioninginput.WorkerMachinePool}
@@ -76,7 +82,7 @@ func (r *RKE2NodeDriverProvisioningTestSuite) TestProvisioningRKE2Cluster() {
 	tests := []struct {
 		name         string
 		machinePools []provisioninginput.MachinePools
-		client       *rancher.Client
+		client       rancher.Client
 		runFlag      bool
 	}{
 		{"1 Node all roles " + provisioninginput.StandardClientName.String(), nodeRolesAll, r.standardUserClient, r.client.Flags.GetValue(environmentflag.Short) || r.client.Flags.GetValue(environmentflag.Long)},
@@ -89,27 +95,39 @@ func (r *RKE2NodeDriverProvisioningTestSuite) TestProvisioningRKE2Cluster() {
 			r.T().Logf("SKIPPED")
 			continue
 		}
-		provisioningConfig := *r.provisioningConfig
-		provisioningConfig.MachinePools = tt.machinePools
-		permutations.RunTestPermutations(&r.Suite, tt.name, tt.client, &provisioningConfig, permutations.RKE2ProvisionCluster, nil, nil)
+
+		tt := tt
+		r.Suite.T().Run(tt.name, func(t *testing.T) {
+			provisioningConfig := *r.provisioningConfig
+			provisioningConfig.MachinePools = tt.machinePools
+			permutations.RunTestPermutations(&r.Suite, tt.name, &tt.client, &provisioningConfig, permutations.RKE2ProvisionCluster, nil, nil)
+		})
+	}
+	if *r.client.RancherConfig.Cleanup {
+		r.standardUserClient.Session.CleanupEnabled = true
+		r.Suite.T().Cleanup(r.standardUserClient.Session.Cleanup)
 	}
 }
 
 func (r *RKE2NodeDriverProvisioningTestSuite) TestProvisioningRKE2ClusterDynamicInput() {
+	r.T().Parallel()
+
 	if len(r.provisioningConfig.MachinePools) == 0 {
 		r.T().Skip()
 	}
 
 	tests := []struct {
 		name   string
-		client *rancher.Client
+		client rancher.Client
 	}{
-		{provisioninginput.AdminClientName.String(), r.client},
 		{provisioninginput.StandardClientName.String(), r.standardUserClient},
 	}
-
 	for _, tt := range tests {
-		permutations.RunTestPermutations(&r.Suite, tt.name, tt.client, r.provisioningConfig, permutations.RKE2ProvisionCluster, nil, nil)
+		tt := tt
+
+		r.Suite.T().Run(tt.name, func(t *testing.T) {
+			permutations.RunTestPermutations(&r.Suite, tt.name, &tt.client, r.provisioningConfig, permutations.RKE2ProvisionCluster, nil, nil)
+		})
 	}
 }
 

@@ -26,9 +26,9 @@ import (
 
 type HardenedRKE1ClusterProvisioningTestSuite struct {
 	suite.Suite
-	client              *rancher.Client
+	client              rancher.Client
 	session             *session.Session
-	standardUserClient  *rancher.Client
+	standardUserClient  rancher.Client
 	provisioningConfig  *provisioninginput.Config
 	project             *management.Project
 	chartInstallOptions *charts.InstallOptions
@@ -49,9 +49,9 @@ func (c *HardenedRKE1ClusterProvisioningTestSuite) SetupSuite() {
 	client, err := rancher.NewClient("", testSession)
 	require.NoError(c.T(), err)
 
-	c.client = client
+	c.client = *client
 
-	c.provisioningConfig.RKE1KubernetesVersions, err = kubernetesversions.Default(c.client, clusters.RKE1ClusterType.String(), c.provisioningConfig.RKE1KubernetesVersions)
+	c.provisioningConfig.RKE1KubernetesVersions, err = kubernetesversions.Default(&c.client, clusters.RKE1ClusterType.String(), c.provisioningConfig.RKE1KubernetesVersions)
 	require.NoError(c.T(), err)
 
 	enabled := true
@@ -72,15 +72,18 @@ func (c *HardenedRKE1ClusterProvisioningTestSuite) SetupSuite() {
 	standardUserClient, err := client.AsUser(newUser)
 	require.NoError(c.T(), err)
 
-	c.standardUserClient = standardUserClient
+	standardUserClient.Session.CleanupEnabled = false
+	c.standardUserClient = *standardUserClient
 }
 
 func (c *HardenedRKE1ClusterProvisioningTestSuite) TestProvisioningRKE1HardenedCluster() {
+	c.T().Parallel()
+
 	nodeRolesDedicated := []provisioninginput.NodePools{provisioninginput.EtcdNodePool, provisioninginput.ControlPlaneNodePool, provisioninginput.WorkerNodePool}
 
 	tests := []struct {
 		name            string
-		client          *rancher.Client
+		client          rancher.Client
 		nodePools       []provisioninginput.NodePools
 		scanProfileName string
 	}{
@@ -88,7 +91,8 @@ func (c *HardenedRKE1ClusterProvisioningTestSuite) TestProvisioningRKE1HardenedC
 		{"RKE1 CIS 1.8 Profile Permissive " + provisioninginput.StandardClientName.String(), c.standardUserClient, nodeRolesDedicated, "rke-profile-permissive-1.8"},
 	}
 	for _, tt := range tests {
-		c.Run(tt.name, func() {
+		tt := tt
+		c.Suite.T().Run(tt.name, func(t *testing.T) {
 			provisioningConfig := *c.provisioningConfig
 			provisioningConfig.NodePools = tt.nodePools
 			provisioningConfig.Hardened = true
@@ -99,18 +103,18 @@ func (c *HardenedRKE1ClusterProvisioningTestSuite) TestProvisioningRKE1HardenedC
 			testConfig := clusters.ConvertConfigToClusterConfig(&provisioningConfig)
 			testConfig.KubernetesVersion = c.provisioningConfig.RKE1KubernetesVersions[0]
 
-			clusterObject, _, err := provisioning.CreateProvisioningRKE1CustomCluster(tt.client, &externalNodeProvider, testConfig)
+			clusterObject, _, err := provisioning.CreateProvisioningRKE1CustomCluster(&tt.client, &externalNodeProvider, testConfig)
 			require.NoError(c.T(), err)
 
-			provisioning.VerifyRKE1Cluster(c.T(), tt.client, testConfig, clusterObject)
+			provisioning.VerifyRKE1Cluster(c.T(), &tt.client, testConfig, clusterObject)
 
-			cluster, err := clusters.NewClusterMeta(tt.client, clusterObject.Name)
+			cluster, err := clusters.NewClusterMeta(&tt.client, clusterObject.Name)
 			require.NoError(c.T(), err)
 
 			latestCISBenchmarkVersion, err := tt.client.Catalog.GetLatestChartVersion(charts.CISBenchmarkName, catalog.RancherChartRepo)
 			require.NoError(c.T(), err)
 
-			project, err := projects.GetProjectByName(tt.client, cluster.ID, cis.System)
+			project, err := projects.GetProjectByName(&tt.client, cluster.ID, cis.System)
 			require.NoError(c.T(), err)
 
 			c.project = project
@@ -122,8 +126,8 @@ func (c *HardenedRKE1ClusterProvisioningTestSuite) TestProvisioningRKE1HardenedC
 				ProjectID: c.project.ID,
 			}
 
-			cis.SetupCISBenchmarkChart(tt.client, c.project.ClusterID, c.chartInstallOptions, charts.CISBenchmarkNamespace)
-			cis.RunCISScan(tt.client, c.project.ClusterID, tt.scanProfileName)
+			cis.SetupCISBenchmarkChart(&tt.client, c.project.ClusterID, c.chartInstallOptions, charts.CISBenchmarkNamespace)
+			cis.RunCISScan(&tt.client, c.project.ClusterID, tt.scanProfileName)
 		})
 	}
 }

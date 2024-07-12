@@ -23,9 +23,9 @@ import (
 
 type CustomClusterProvisioningTestSuite struct {
 	suite.Suite
-	client             *rancher.Client
+	client             rancher.Client
 	session            *session.Session
-	standardUserClient *rancher.Client
+	standardUserClient rancher.Client
 	provisioningConfig *provisioninginput.Config
 }
 
@@ -43,9 +43,9 @@ func (c *CustomClusterProvisioningTestSuite) SetupSuite() {
 	client, err := rancher.NewClient("", testSession)
 	require.NoError(c.T(), err)
 
-	c.client = client
+	c.client = *client
 
-	c.provisioningConfig.K3SKubernetesVersions, err = kubernetesversions.Default(c.client, clusters.K3SClusterType.String(), c.provisioningConfig.K3SKubernetesVersions)
+	c.provisioningConfig.K3SKubernetesVersions, err = kubernetesversions.Default(&c.client, clusters.K3SClusterType.String(), c.provisioningConfig.K3SKubernetesVersions)
 	require.NoError(c.T(), err)
 
 	enabled := true
@@ -66,17 +66,20 @@ func (c *CustomClusterProvisioningTestSuite) SetupSuite() {
 	standardUserClient, err := client.AsUser(newUser)
 	require.NoError(c.T(), err)
 
-	c.standardUserClient = standardUserClient
+	standardUserClient.Session.CleanupEnabled = false
+	c.standardUserClient = *standardUserClient
 }
 
 func (c *CustomClusterProvisioningTestSuite) TestProvisioningK3SCustomCluster() {
+	c.T().Parallel()
+
 	nodeRolesAll := []provisioninginput.MachinePools{provisioninginput.AllRolesMachinePool}
 	nodeRolesShared := []provisioninginput.MachinePools{provisioninginput.EtcdControlPlaneMachinePool, provisioninginput.WorkerMachinePool}
 	nodeRolesDedicated := []provisioninginput.MachinePools{provisioninginput.EtcdMachinePool, provisioninginput.ControlPlaneMachinePool, provisioninginput.WorkerMachinePool}
 
 	tests := []struct {
 		name         string
-		client       *rancher.Client
+		client       rancher.Client
 		machinePools []provisioninginput.MachinePools
 		runFlag      bool
 	}{
@@ -92,11 +95,17 @@ func (c *CustomClusterProvisioningTestSuite) TestProvisioningK3SCustomCluster() 
 
 		provisioningConfig := *c.provisioningConfig
 		provisioningConfig.MachinePools = tt.machinePools
-		permutations.RunTestPermutations(&c.Suite, tt.name, tt.client, &provisioningConfig, permutations.K3SCustomCluster, nil, nil)
+
+		tt := tt
+		c.Suite.T().Run(tt.name, func(t *testing.T) {
+			permutations.RunTestPermutations(&c.Suite, tt.name, &tt.client, &provisioningConfig, permutations.K3SCustomCluster, nil, nil)
+		})
 	}
 }
 
 func (c *CustomClusterProvisioningTestSuite) TestProvisioningK3SCustomClusterDynamicInput() {
+	c.T().Parallel()
+
 	isWindows := false
 	for _, pool := range c.provisioningConfig.MachinePools {
 		if pool.MachinePoolConfig.Windows {
@@ -114,13 +123,17 @@ func (c *CustomClusterProvisioningTestSuite) TestProvisioningK3SCustomClusterDyn
 
 	tests := []struct {
 		name   string
-		client *rancher.Client
+		client rancher.Client
 	}{
 		{provisioninginput.AdminClientName.String(), c.client},
 		{provisioninginput.StandardClientName.String(), c.standardUserClient},
 	}
 	for _, tt := range tests {
-		permutations.RunTestPermutations(&c.Suite, tt.name, tt.client, c.provisioningConfig, permutations.K3SCustomCluster, nil, nil)
+
+		tt := tt
+		c.Suite.T().Run(tt.name, func(t *testing.T) {
+			permutations.RunTestPermutations(&c.Suite, tt.name, &tt.client, c.provisioningConfig, permutations.K3SCustomCluster, nil, nil)
+		})
 	}
 }
 

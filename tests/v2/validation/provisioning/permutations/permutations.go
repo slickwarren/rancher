@@ -79,17 +79,116 @@ var (
 	user  int64
 )
 
+func createAndValidateCluster(t *testing.T, client *rancher.Client, provisioningConfig *provisioninginput.Config, cni, testNamePrefix, nodeProviderName, kubeVersion, clusterType string, hostnameTruncation []machinepools.HostnameTruncation, corralPackages *corral.Packages) {
+	var name string
+
+	nodeProvider, rke1Provider, customProvider, _ := GetClusterProvider(clusterType, nodeProviderName, provisioningConfig)
+	testClusterConfig := clusters.ConvertConfigToClusterConfig(provisioningConfig)
+
+	testClusterConfig.CNI = cni
+	testClusterConfig.KubernetesVersion = kubeVersion
+
+	name = testNamePrefix + " Node Provider: " + nodeProviderName + " Kubernetes version: " + kubeVersion + " cni: " + cni
+
+	clusterObject := &steveV1.SteveAPIObject{}
+	rke1ClusterObject := &management.Cluster{}
+	nodeTemplate := &nodetemplates.NodeTemplate{}
+
+	t.Run(name, func(t *testing.T) {
+		logrus.Info("starting lowest level test")
+		t.Parallel()
+		t.Cleanup(client.Session.Cleanup)
+
+		testSession := session.NewSession()
+		client, err := client.WithSession(testSession)
+
+		require.NoError(t, err)
+
+		if testClusterConfig.CloudProvider == provisioninginput.AWSProviderName.String() {
+			byteYaml, err := os.ReadFile(outOfTreeAWSFilePath)
+			require.NoError(t, err)
+			testClusterConfig.AddOnConfig = &provisioninginput.AddOnConfig{
+				AdditionalManifest: string(byteYaml),
+			}
+		}
+
+		switch clusterType {
+		case RKE2ProvisionCluster, K3SProvisionCluster:
+			clusterObject, err = provisioning.CreateProvisioningCluster(client, *nodeProvider, testClusterConfig, hostnameTruncation)
+			require.NoError(t, err)
+
+			provisioning.VerifyCluster(t, client, testClusterConfig, clusterObject)
+
+		case RKE1ProvisionCluster:
+
+			nodeTemplate, err = rke1Provider.NodeTemplateFunc(client)
+			require.NoError(t, err)
+			// workaround to simplify config for rke1 clusters with cloud provider set. This will allow external charts to be installed
+			// while using the rke2 CloudProvider.
+			if testClusterConfig.CloudProvider == provisioninginput.VsphereCloudProviderName.String() {
+				testClusterConfig.CloudProvider = "external"
+			}
+
+			rke1ClusterObject, err = provisioning.CreateProvisioningRKE1Cluster(client, *rke1Provider, testClusterConfig, nodeTemplate)
+			require.NoError(t, err)
+
+			provisioning.VerifyRKE1Cluster(t, client, testClusterConfig, rke1ClusterObject)
+
+		case RKE2CustomCluster, K3SCustomCluster:
+
+			clusterObject, err = provisioning.CreateProvisioningCustomCluster(client, customProvider, testClusterConfig)
+			require.NoError(t, err)
+
+			provisioning.VerifyCluster(t, client, testClusterConfig, clusterObject)
+
+		case RKE1CustomCluster:
+
+			// workaround to simplify config for rke1 clusters with cloud provider set. This will allow external charts to be installed
+			// while using the rke2 CloudProvider name in the
+			if testClusterConfig.CloudProvider == provisioninginput.VsphereCloudProviderName.String() {
+				testClusterConfig.CloudProvider = "external"
+			}
+
+			rke1ClusterObject, nodes, err := provisioning.CreateProvisioningRKE1CustomCluster(client, customProvider, testClusterConfig)
+			require.NoError(t, err)
+
+			provisioning.VerifyRKE1Cluster(t, client, testClusterConfig, rke1ClusterObject)
+			etcdVersion, err := componentchecks.CheckETCDVersion(client, nodes, rke1ClusterObject.ID)
+			require.NoError(t, err)
+			require.NotEmpty(t, etcdVersion)
+
+		// airgap currently uses corral to create nodes and register with rancher
+		case RKE2AirgapCluster, K3SAirgapCluster:
+
+			clusterObject, err = provisioning.CreateProvisioningAirgapCustomCluster(client, testClusterConfig, corralPackages)
+			require.NoError(t, err)
+
+			provisioning.VerifyCluster(t, client, testClusterConfig, clusterObject)
+
+		case RKE1AirgapCluster:
+
+			// workaround to simplify config for rke1 clusters with cloud provider set. This will allow external charts to be installed
+			// while using the rke2 CloudProvider name in the
+			if testClusterConfig.CloudProvider == provisioninginput.VsphereCloudProviderName.String() {
+				testClusterConfig.CloudProvider = "external"
+			}
+
+			clusterObject, err := provisioning.CreateProvisioningRKE1AirgapCustomCluster(client, testClusterConfig, corralPackages)
+			require.NoError(t, err)
+
+			provisioning.VerifyRKE1Cluster(t, client, testClusterConfig, clusterObject)
+
+		default:
+			t.Fatalf("Invalid cluster type: %s", clusterType)
+		}
+
+		RunPostClusterCloudProviderChecks(t, client, clusterType, nodeTemplate, testClusterConfig, clusterObject, rke1ClusterObject)
+	})
+}
+
 // RunTestPermutations runs through all relevant perumutations in a given config file, including node providers, k8s versions, and CNIs
 func RunTestPermutations(s *suite.Suite, testNamePrefix string, client *rancher.Client, provisioningConfig *provisioninginput.Config, clusterType string, hostnameTruncation []machinepools.HostnameTruncation, corralPackages *corral.Packages) {
-	var name string
 	var providers []string
-	var testClusterConfig *clusters.ClusterConfig
-	var err error
-
-	testSession := session.NewSession()
-	defer testSession.Cleanup()
-	client, err = client.WithSession(testSession)
-	require.NoError(s.T(), err)
 
 	if strings.Contains(clusterType, "Custom") {
 		providers = provisioningConfig.NodeProviders
@@ -101,102 +200,11 @@ func RunTestPermutations(s *suite.Suite, testNamePrefix string, client *rancher.
 
 	for _, nodeProviderName := range providers {
 
-		nodeProvider, rke1Provider, customProvider, kubeVersions := GetClusterProvider(clusterType, nodeProviderName, provisioningConfig)
+		_, _, _, kubeVersions := GetClusterProvider(clusterType, nodeProviderName, provisioningConfig)
 
 		for _, kubeVersion := range kubeVersions {
 			for _, cni := range provisioningConfig.CNIs {
-
-				testClusterConfig = clusters.ConvertConfigToClusterConfig(provisioningConfig)
-				testClusterConfig.CNI = cni
-				name = testNamePrefix + " Node Provider: " + nodeProviderName + " Kubernetes version: " + kubeVersion + " cni: " + cni
-
-				clusterObject := &steveV1.SteveAPIObject{}
-				rke1ClusterObject := &management.Cluster{}
-				nodeTemplate := &nodetemplates.NodeTemplate{}
-
-				s.Run(name, func() {
-					if testClusterConfig.CloudProvider == provisioninginput.AWSProviderName.String() {
-						byteYaml, err := os.ReadFile(outOfTreeAWSFilePath)
-						require.NoError(s.T(), err)
-						testClusterConfig.AddOnConfig = &provisioninginput.AddOnConfig{
-							AdditionalManifest: string(byteYaml),
-						}
-					}
-
-					switch clusterType {
-					case RKE2ProvisionCluster, K3SProvisionCluster:
-						testClusterConfig.KubernetesVersion = kubeVersion
-						clusterObject, err = provisioning.CreateProvisioningCluster(client, *nodeProvider, testClusterConfig, hostnameTruncation)
-						require.NoError(s.T(), err)
-
-						provisioning.VerifyCluster(s.T(), client, testClusterConfig, clusterObject)
-
-					case RKE1ProvisionCluster:
-						testClusterConfig.KubernetesVersion = kubeVersion
-						nodeTemplate, err = rke1Provider.NodeTemplateFunc(client)
-						require.NoError(s.T(), err)
-						// workaround to simplify config for rke1 clusters with cloud provider set. This will allow external charts to be installed
-						// while using the rke2 CloudProvider.
-						if testClusterConfig.CloudProvider == provisioninginput.VsphereCloudProviderName.String() {
-							testClusterConfig.CloudProvider = "external"
-						}
-
-						rke1ClusterObject, err = provisioning.CreateProvisioningRKE1Cluster(client, *rke1Provider, testClusterConfig, nodeTemplate)
-						require.NoError(s.T(), err)
-
-						provisioning.VerifyRKE1Cluster(s.T(), client, testClusterConfig, rke1ClusterObject)
-
-					case RKE2CustomCluster, K3SCustomCluster:
-						testClusterConfig.KubernetesVersion = kubeVersion
-
-						clusterObject, err = provisioning.CreateProvisioningCustomCluster(client, customProvider, testClusterConfig)
-						require.NoError(s.T(), err)
-
-						provisioning.VerifyCluster(s.T(), client, testClusterConfig, clusterObject)
-
-					case RKE1CustomCluster:
-						testClusterConfig.KubernetesVersion = kubeVersion
-						// workaround to simplify config for rke1 clusters with cloud provider set. This will allow external charts to be installed
-						// while using the rke2 CloudProvider name in the
-						if testClusterConfig.CloudProvider == provisioninginput.VsphereCloudProviderName.String() {
-							testClusterConfig.CloudProvider = "external"
-						}
-
-						rke1ClusterObject, nodes, err := provisioning.CreateProvisioningRKE1CustomCluster(client, customProvider, testClusterConfig)
-						require.NoError(s.T(), err)
-
-						provisioning.VerifyRKE1Cluster(s.T(), client, testClusterConfig, rke1ClusterObject)
-						etcdVersion, err := componentchecks.CheckETCDVersion(client, nodes, rke1ClusterObject.ID)
-						require.NoError(s.T(), err)
-						require.NotEmpty(s.T(), etcdVersion)
-
-					// airgap currently uses corral to create nodes and register with rancher
-					case RKE2AirgapCluster, K3SAirgapCluster:
-						testClusterConfig.KubernetesVersion = kubeVersion
-						clusterObject, err = provisioning.CreateProvisioningAirgapCustomCluster(client, testClusterConfig, corralPackages)
-						require.NoError(s.T(), err)
-
-						provisioning.VerifyCluster(s.T(), client, testClusterConfig, clusterObject)
-
-					case RKE1AirgapCluster:
-						testClusterConfig.KubernetesVersion = kubeVersion
-						// workaround to simplify config for rke1 clusters with cloud provider set. This will allow external charts to be installed
-						// while using the rke2 CloudProvider name in the
-						if testClusterConfig.CloudProvider == provisioninginput.VsphereCloudProviderName.String() {
-							testClusterConfig.CloudProvider = "external"
-						}
-
-						clusterObject, err := provisioning.CreateProvisioningRKE1AirgapCustomCluster(client, testClusterConfig, corralPackages)
-						require.NoError(s.T(), err)
-
-						provisioning.VerifyRKE1Cluster(s.T(), client, testClusterConfig, clusterObject)
-
-					default:
-						s.T().Fatalf("Invalid cluster type: %s", clusterType)
-					}
-
-					RunPostClusterCloudProviderChecks(s.T(), client, clusterType, nodeTemplate, testClusterConfig, clusterObject, rke1ClusterObject)
-				})
+				createAndValidateCluster(s.T(), client, provisioningConfig, cni, testNamePrefix, nodeProviderName, kubeVersion, clusterType, hostnameTruncation, corralPackages)
 			}
 		}
 	}
