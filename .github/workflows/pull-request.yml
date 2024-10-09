@@ -1,6 +1,22 @@
 name: Build Pull Request
 on:
-  - pull_request 
+  pull_request:
+    paths:
+      # - '.github/workflows/**'
+      - 'chart/**'
+      - 'cleanup/**'
+      - 'cmd/**'
+      - 'dev-scripts/**'
+      - 'docs/**'
+      - 'hack/**'
+      - 'management-state/**'
+      - 'package/**'
+      - 'pkg/**'
+      - 'scripts/**'
+      # omit tests from triggering CI except when CI tests are changed
+      - 'tests/v2/integration/**'
+      - '*'
+
 env:
   ARCH: amd64
   TAG: v2.10-${{ github.sha }}-head
