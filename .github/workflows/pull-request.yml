@@ -14,6 +14,7 @@ on:
       - 'pkg/**'
       - 'scripts/**'
       # omit tests from triggering CI except when CI tests are changed
+      # testing change
       - 'tests/v2/integration/**'
       - '*'
 

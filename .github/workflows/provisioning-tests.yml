@@ -4,6 +4,22 @@ on:
     branches:
       - main
       - release/v*
+    paths:
+      # - '.github/workflows/**'
+      - 'chart/**'
+      - 'cleanup/**'
+      - 'cmd/**'
+      - 'dev-scripts/**'
+      - 'docs/**'
+      - 'hack/**'
+      - 'management-state/**'
+      - 'package/**'
+      - 'pkg/**'
+      - 'scripts/**'
+      # omit tests from triggering CI except when CI tests are changed
+      # testing change
+      - 'tests/v2/integration/**'
+      - '*'
 jobs:
   provisioning_tests:
     strategy:
