@@ -9,6 +9,7 @@ import (
 	provv1 "github.com/rancher/rancher/pkg/apis/provisioning.cattle.io/v1"
 	"github.com/rancher/rancher/tests/v2/actions/clusters"
 	"github.com/rancher/rancher/tests/v2/actions/fleet"
+	"github.com/rancher/rancher/tests/v2/actions/hardening"
 	"github.com/rancher/rancher/tests/v2/actions/provisioning"
 	"github.com/rancher/rancher/tests/v2/actions/provisioning/permutations"
 	"github.com/rancher/rancher/tests/v2/actions/provisioninginput"
@@ -16,6 +17,7 @@ import (
 	"github.com/rancher/shepherd/clients/rancher"
 	management "github.com/rancher/shepherd/clients/rancher/generated/management/v3"
 	steveV1 "github.com/rancher/shepherd/clients/rancher/v1"
+	extensionscluster "github.com/rancher/shepherd/extensions/clusters"
 	"github.com/rancher/shepherd/extensions/clusters/kubernetesversions"
 	extensionsfleet "github.com/rancher/shepherd/extensions/fleet"
 	"github.com/rancher/shepherd/extensions/users"
@@ -29,6 +31,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+const (
+	fleetPSA = "fleet-psa"
 )
 
 type FleetWithProvisioningTestSuite struct {
@@ -119,6 +125,10 @@ func (f *FleetWithProvisioningTestSuite) SetupSuite() {
 	require.NoError(f.T(), err)
 
 	f.standardUserClient = standardUserClient
+
+	err = hardening.CreateRancherPSACT(client, fleetPSA, hardening.Baseline, []string{"default"})
+	require.NoError(f.T(), err)
+
 }
 
 func (f *FleetWithProvisioningTestSuite) TestHardenedAfterAddedGitRepo() {
@@ -177,6 +187,19 @@ func (f *FleetWithProvisioningTestSuite) TestHardenedAfterAddedGitRepo() {
 			require.NoError(f.T(), err)
 
 			provisioning.VerifyCluster(f.T(), tt.client, testClusterConfig, clusterObject)
+
+			testClusterConfig.PSACT = fleetPSA
+
+			updatedCluster := clusters.UpdateK3SRKE2ClusterConfig(clusterObject, testClusterConfig)
+
+			updatedClusterObj := new(provv1.Cluster)
+			err = steveV1.ConvertToK8sType(updatedCluster, &updatedClusterObj)
+			require.NoError(f.T(), err)
+
+			updatedSteveObject, err := extensionscluster.UpdateK3SRKE2Cluster(f.client, updatedCluster, updatedClusterObj)
+			require.NoError(f.T(), err)
+
+			provisioning.VerifyCluster(f.T(), tt.client, testClusterConfig, updatedSteveObject)
 
 			status := &provv1.ClusterStatus{}
 			err = steveV1.ConvertToK8sType(clusterObject.Status, status)

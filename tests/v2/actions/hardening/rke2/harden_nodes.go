@@ -62,8 +62,10 @@ func PostRKE2HardeningConfig(nodes []*nodes.Node, nodeRoles []string) error {
 			if err != nil {
 				return nil
 			}
+			logrus.Infof("joining filepath")
+			dirPath := filepath.Join(user.HomeDir, "Go/go/src/github.com/rancher/rancher/tests/v2/actions/hardening/rke2")
 
-			dirPath := filepath.Join(user.HomeDir, "go/src/github.com/rancher/rancher/tests/v2/actions/hardening/rke2")
+			logrus.Infof("scp to node")
 			err = node.SCPFileToNode(dirPath+"/account-update.yaml", "/home/"+node.SSHUser+"/account-update.yaml")
 			if err != nil {
 				return err

@@ -17,6 +17,7 @@ import (
 	rkev1 "github.com/rancher/rancher/pkg/apis/rke.cattle.io/v1"
 
 	"github.com/rancher/rancher/tests/v2/actions/clusters"
+	"github.com/rancher/rancher/tests/v2/actions/hardening"
 	k3sHardening "github.com/rancher/rancher/tests/v2/actions/hardening/k3s"
 	rke1Hardening "github.com/rancher/rancher/tests/v2/actions/hardening/rke1"
 	rke2Hardening "github.com/rancher/rancher/tests/v2/actions/hardening/rke2"
@@ -79,7 +80,7 @@ func CreateProvisioningCluster(client *rancher.Client, provider Provider, cluste
 	}
 
 	if clustersConfig.PSACT == string(provisioninginput.RancherBaseline) {
-		err = clusters.CreateRancherBaselinePSACT(client, clustersConfig.PSACT)
+		err = hardening.CreateRancherPSACT(client, clustersConfig.PSACT, hardening.Baseline, []string{})
 		if err != nil {
 			return nil, err
 		}
@@ -231,7 +232,7 @@ func CreateProvisioningCustomCluster(client *rancher.Client, externalNodeProvide
 	}
 
 	if clustersConfig.PSACT == string(provisioninginput.RancherBaseline) {
-		err := clusters.CreateRancherBaselinePSACT(client, clustersConfig.PSACT)
+		err := hardening.CreateRancherPSACT(client, clustersConfig.PSACT, hardening.Baseline, []string{})
 		if err != nil {
 			return nil, err
 		}
@@ -387,7 +388,7 @@ func CreateProvisioningCustomCluster(client *rancher.Client, externalNodeProvide
 // CreateProvisioningRKE1Cluster provisions an rke1 cluster, then runs verify checks
 func CreateProvisioningRKE1Cluster(client *rancher.Client, provider RKE1Provider, clustersConfig *clusters.ClusterConfig, nodeTemplate *nodetemplates.NodeTemplate) (*management.Cluster, error) {
 	if clustersConfig.PSACT == string(provisioninginput.RancherBaseline) {
-		err := clusters.CreateRancherBaselinePSACT(client, clustersConfig.PSACT)
+		err := hardening.CreateRancherPSACT(client, clustersConfig.PSACT, hardening.Baseline, []string{})
 		if err != nil {
 			return nil, err
 		}
@@ -439,7 +440,7 @@ func CreateProvisioningRKE1CustomCluster(client *rancher.Client, externalNodePro
 	}
 
 	if clustersConfig.PSACT == string(provisioninginput.RancherBaseline) {
-		err := clusters.CreateRancherBaselinePSACT(client, clustersConfig.PSACT)
+		err := hardening.CreateRancherPSACT(client, clustersConfig.PSACT, hardening.Baseline, []string{})
 		if err != nil {
 			return nil, nil, err
 		}
@@ -587,7 +588,7 @@ func CreateProvisioningAirgapCustomCluster(client *rancher.Client, clustersConfi
 	}
 
 	if clustersConfig.PSACT == string(provisioninginput.RancherBaseline) {
-		err := clusters.CreateRancherBaselinePSACT(client, clustersConfig.PSACT)
+		err := hardening.CreateRancherPSACT(client, clustersConfig.PSACT, hardening.Baseline, []string{})
 		if err != nil {
 			return nil, err
 		}
@@ -672,7 +673,7 @@ func CreateProvisioningRKE1AirgapCustomCluster(client *rancher.Client, clustersC
 	}
 
 	if clustersConfig.PSACT == string(provisioninginput.RancherBaseline) {
-		err := clusters.CreateRancherBaselinePSACT(client, clustersConfig.PSACT)
+		err := hardening.CreateRancherPSACT(client, clustersConfig.PSACT, hardening.Baseline, []string{})
 		if err != nil {
 			return nil, err
 		}

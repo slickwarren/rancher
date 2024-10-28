@@ -49,7 +49,7 @@ func HardenK3SNodes(nodes []*nodes.Node, nodeRoles []string, kubeVersion string)
 				return nil
 			}
 
-			dirPath := filepath.Join(user.HomeDir, "go/src/github.com/rancher/rancher/tests/v2/actions/hardening/k3s")
+			dirPath := filepath.Join(user.HomeDir, "Go/go21/src/github.com/rancher/rancher/tests/v2/actions/hardening/k3s")
 			err = node.SCPFileToNode(dirPath+"/audit.yaml", "/home/"+node.SSHUser+"/audit.yaml")
 			if err != nil {
 				return err

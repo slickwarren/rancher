@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	v3 "github.com/rancher/rancher/pkg/apis/management.cattle.io/v3"
 	apisV1 "github.com/rancher/rancher/pkg/apis/provisioning.cattle.io/v1"
 	provv1 "github.com/rancher/rancher/pkg/apis/provisioning.cattle.io/v1"
 	rkev1 "github.com/rancher/rancher/pkg/apis/rke.cattle.io/v1"
@@ -39,63 +38,6 @@ const (
 	rke1HardenedGID             = 52034
 	rke1HardenedUID             = 52034
 )
-
-// CreateRancherBaselinePSACT creates custom PSACT called rancher-baseline which sets each PSS to baseline.
-func CreateRancherBaselinePSACT(client *rancher.Client, psact string) error {
-	_, err := client.Steve.SteveType(clusters.PodSecurityAdmissionSteveResoureType).ByID(psact)
-	if err == nil {
-		return err
-	}
-
-	template := &v3.PodSecurityAdmissionConfigurationTemplate{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: psact,
-		},
-		Description: "This is a custom baseline Pod Security Admission Configuration Template. " +
-			"It defines a minimally restrictive policy which prevents known privilege escalations. " +
-			"This policy contains namespace level exemptions for Rancher components.",
-		Configuration: v3.PodSecurityAdmissionConfigurationTemplateSpec{
-			Defaults: v3.PodSecurityAdmissionConfigurationTemplateDefaults{
-				Enforce: baseline,
-				Audit:   baseline,
-				Warn:    baseline,
-			},
-			Exemptions: v3.PodSecurityAdmissionConfigurationTemplateExemptions{
-				Usernames:      []string{},
-				RuntimeClasses: []string{},
-				Namespaces: []string{
-					"ingress-nginx",
-					"kube-system",
-					"cattle-system",
-					"cattle-epinio-system",
-					"cattle-fleet-system",
-					"longhorn-system",
-					"cattle-neuvector-system",
-					"cattle-monitoring-system",
-					"rancher-alerting-drivers",
-					"cis-operator-system",
-					"cattle-csp-adapter-system",
-					"cattle-externalip-system",
-					"cattle-gatekeeper-system",
-					"istio-system",
-					"cattle-istio-system",
-					"cattle-logging-system",
-					"cattle-windows-gmsa-system",
-					"cattle-sriov-system",
-					"cattle-ui-plugin-system",
-					"tigera-operator",
-				},
-			},
-		},
-	}
-
-	_, err = client.Steve.SteveType(clusters.PodSecurityAdmissionSteveResoureType).Create(template)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
 
 // NewRKE1ClusterConfig is a constructor for a v3.Cluster object, to be used by the rancher.Client.Provisioning client.
 func NewRKE1ClusterConfig(clusterName string, client *rancher.Client, clustersConfig *ClusterConfig) *management.Cluster {
