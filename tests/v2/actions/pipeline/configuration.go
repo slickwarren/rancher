@@ -160,6 +160,14 @@ func UpdateRKE2ImageFields(provider, image, sshUser, volumeType string, isCustom
 				machineConfig.LinodeMachineConfig[i].SSHUser = sshUser
 			}
 		})
+	case provisioninginput.VsphereProviderName.String():
+		machineConfig := new(machinepools.VmwarevsphereMachineConfigs)
+		config.LoadAndUpdateConfig(machinepools.VmwarevsphereMachineConfigConfigurationFileKey, machineConfig, func() {
+			for i := range machineConfig.VmwarevsphereMachineConfig {
+				machineConfig.VmwarevsphereMachineConfig[i].CloneFrom = image
+				machineConfig.VmwarevsphereMachineConfig[i].SSHUser = sshUser
+			}
+		})
 	default:
 		logrus.Error("Couldn't match RKE2 image fields")
 	}
