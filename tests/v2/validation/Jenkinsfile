@@ -40,6 +40,7 @@ node {
                           string(credentialsId: 'DO_ACCESSKEY', variable: 'DO_ACCESSKEY'),
                           string(credentialsId: 'AWS_SSH_PEM_KEY', variable: 'AWS_SSH_PEM_KEY'),
                           string(credentialsId: 'AWS_SSH_RSA_KEY', variable: 'AWS_SSH_RSA_KEY'),
+                          string(credentialsId: 'AWS_RSA_KEY_NAME', variable: 'AWS_RSA_KEY_NAME'),
                           string(credentialsId: 'RANCHER_SSH_KEY', variable: 'RANCHER_SSH_KEY'),
                           string(credentialsId: 'AZURE_SUBSCRIPTION_ID', variable: 'AZURE_SUBSCRIPTION_ID'),
                           string(credentialsId: 'AZURE_TENANT_ID', variable: 'AZURE_TENANT_ID'),
@@ -104,7 +105,7 @@ node {
 
                 dir("./tests/v2/validation/.ssh") {
                   def decodedRsa = new String(AWS_SSH_RSA_KEY.decodeBase64())
-                  writeFile file: JENKINS_RKE_VALIDATION, text: decodedRsa
+                  writeFile file: AWS_RSA_KEY_NAME, text: decodedRsa
                 }
 
                 dir("./tests/v2/validation") {
