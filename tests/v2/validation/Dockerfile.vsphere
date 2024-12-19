@@ -6,12 +6,12 @@ ENV GOPATH /root/go
 ENV PATH ${PATH}:/root/go/bin
 
 ENV WORKSPACE ${GOPATH}/src/github.com/rancher/rancher
-# ENV WORKSPACE2 ${GOPATH}/src/github.com/rancherlabs/suse-garage
+ENV WORKSPACE2 ${GOPATH}/src/github.com/rancherlabs/suse-garage
 
 WORKDIR $WORKSPACE
 
 COPY ["./rancher", "$WORKSPACE"]
-# COPY ["./suse-garage", "$WORKSPACE2"]
+COPY ["./suse-garage", "$WORKSPACE2"]
 
 
 RUN zypper -n install gcc binutils glibc-devel-static ca-certificates git-core wget curl unzip tar vim less file xz gzip sed gawk iproute2 iptables jq helm
@@ -19,7 +19,8 @@ RUN zypper install -y -f docker && rpm -e --nodeps --noscripts containerd
 RUN go mod download && \
     go install gotest.tools/gotestsum@latest
 
-# RUN cd suse-garage && chmod 777 e2e_create_rancher.sh insall_rancher_on_cluster.sh ips_from_terraform.sh create_k3s_server.sh
+RUN cd $WORKSPACE2/rancher-local/k3s-ha && chmod 777 e2e_create_rancher.sh install_rancher_on_cluster.sh ips_from_terraform.sh create_k3s_server.sh
+
 # necessary to run if statements using [[ ]]
 SHELL ["/bin/bash", "-c"] 
 
