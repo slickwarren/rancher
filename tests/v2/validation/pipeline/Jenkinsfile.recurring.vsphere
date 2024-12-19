@@ -26,7 +26,7 @@ node("vsphere-vpn-1") {
     def config = env.CONFIG
     def rancherToken = ""
     def filename = "config.yaml"
-    def individualJob = (jobName =~ /(go-vpn-recurring-[a-z]+)/)[0][1]
+    def individualJob = "$jobName"
     individualJob = "${individualJob}-individual-job"
 
     if ("${env.BRANCH}" != "null" && "${env.BRANCH}" != "") {
@@ -132,6 +132,11 @@ node("vsphere-vpn-1") {
 
               dir("./suse-garage/terraform/${env.PROVIDER}/") {
                 writeFile file: "terraform.tfvars", text: env.TF_VARS
+                writeFile file: "e2e.env", text: env.LOCAL_CLUSTER_VARS
+              }
+
+              dir("./suse-garage/rancher-local/k3s-ha/") {
+                writeFile file: "e2e.env", text: env.LOCAL_CLUSTER_VARS
               }
 
               dir ("./") {
@@ -146,9 +151,10 @@ node("vsphere-vpn-1") {
             }
             stage("Bootstrap rancher cluster") {
               try {
-                dir ("./suse-garage/rancher-local/k3s-ha/")
-                sh "chmod 777 e2e_create_rancher.sh insall_rancher_on_cluster.sh ips_from_terraform.sh create_k3s_server.sh"
-                sh "./e2e_create_rancher.sh"
+                dir ("./suse-garage/rancher-local/k3s-ha/") {
+                    sh "chmod 777 e2e_create_rancher.sh install_rancher_on_cluster.sh ips_from_terraform.sh create_k3s_server.sh"
+                    sh "./e2e_create_rancher.sh"
+                }
               } catch(err) {
                   sh "docker stop ${buildTestContainer}"
                   sh "docker rm -v ${buildTestContainer}"
