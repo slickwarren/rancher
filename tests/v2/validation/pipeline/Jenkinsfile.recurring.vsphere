@@ -153,6 +153,7 @@ node("vsphere-vpn-1") {
               try {
                 dir ("./suse-garage/rancher-local/k3s-ha/") {
                     sh "chmod 777 e2e_create_rancher.sh install_rancher_on_cluster.sh ips_from_terraform.sh create_k3s_server.sh"
+                    sh "sudo snap install helm --classic"
                     sh "./e2e_create_rancher.sh"
                 }
               } catch(err) {
