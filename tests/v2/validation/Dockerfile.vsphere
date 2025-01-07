@@ -24,7 +24,7 @@ RUN zypper install -y -f docker && rpm -e --nodeps --noscripts containerd
 RUN go mod download && \
     go install gotest.tools/gotestsum@latest
 
-RUN cd $WORKSPACE2/rancher-local/k3s-ha && chmod 777 e2e_create_rancher.sh install_rancher_on_cluster.sh ips_from_terraform.sh create_k3s_server.sh
+RUN cd $WORKSPACE2/rancher-local/k3s-ha && chmod 777 e2e_create_rancher.sh install_rancher_on_cluster.sh ips_from_terraform.sh create_k3s_server.sh .remote_script.sh
 
 # necessary to run if statements using [[ ]]
 SHELL ["/bin/bash", "-c"] 

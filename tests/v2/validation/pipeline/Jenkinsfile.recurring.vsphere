@@ -1,109 +1,123 @@
 #!groovy
+
 node("vsphere-vpn-1") {
-    def rootPath = "/root/go/src/github.com/rancher/rancher/"
-    def workPath = "/root/go/src/github.com/rancher/rancher/tests/v2/validation/"
-    def jobName = "${JOB_NAME}"
-    if (jobName.contains('/')) { 
-      jobNames = jobName.split('/')
-      jobName = jobNames[jobNames.size() - 1] 
-    }
-    def golangTestContainer = "${jobName}${env.BUILD_NUMBER}-golangtest"
-    def buildTestContainer = "${jobName}${env.BUILD_NUMBER}-buildtest"
-    def configGeneratorContainer = "${jobName}${env.BUILD_NUMBER}_generator"
-    def cleanupTestContainer = "${jobName}${env.BUILD_NUMBER}-cleanuptest"
-    def imageName = "rancher-recurring-runs-validation-${jobName}${env.BUILD_NUMBER}"
-    def validationVolume = "RecurringRunsSharedVolume-${jobName}${env.BUILD_NUMBER}"
-    def testsDir = "/root/go/src/github.com/rancher/rancher/tests/v2/validation/"
-    def configsDir = "cattle-configs"
-    def patchedConfigsDir = "patched-cattle-configs"
-    def testResultsOut = "results.xml"
-    def qaseRun = "testrun"
-    def testRunConfig = "testrunconfig.yaml"
-    def envFile = ".env"
-    def rancherConfig = "rancher_env.config"
-    def branch = "release/v2.10"
-    def corralBranch = "main"
-    def config = env.CONFIG
-    def rancherToken = ""
-    def filename = "config.yaml"
-    def individualJob = "$jobName"
-    individualJob = "${individualJob}-individual-job"
+  def rootPath = "/root/go/src/github.com/rancher/rancher/"
+  def workPath = "/root/go/src/github.com/rancher/rancher/tests/v2/validation/"
+  def jobName = "${JOB_NAME}"
+  if (jobName.contains('/')) {
+    jobNames = jobName.split('/')
+    jobName = jobNames[jobNames.size() - 1]
+  }
+  def golangTestContainer = "${jobName}${env.BUILD_NUMBER}-golangtest"
+  def buildTestContainer = "${jobName}${env.BUILD_NUMBER}-buildtest"
+  def configGeneratorContainer = "${jobName}${env.BUILD_NUMBER}_generator"
+  def cleanupTestContainer = "${jobName}${env.BUILD_NUMBER}-cleanuptest"
+  def imageName = "rancher-recurring-runs-validation-${jobName}${env.BUILD_NUMBER}"
+  def validationVolume = "RecurringRunsSharedVolume-${jobName}${env.BUILD_NUMBER}"
+  def testsDir = "/root/go/src/github.com/rancher/rancher/tests/v2/validation/"
+  def configsDir = "cattle-configs"
+  def patchedConfigsDir = "patched-cattle-configs"
+  def testResultsOut = "results.xml"
+  def qaseRun = "testrun"
+  def testRunConfig = "testrunconfig.yaml"
+  def envFile = ".env"
+  def rancherConfig = "rancher_env.config"
+  def branch = "release/v2.10"
+  def corralBranch = "main"
+  def config = env.CONFIG
+  def rancherToken = ""
+  def filename = "config.yaml"
+  def individualJob = "$jobName"
+  individualJob = "${individualJob}-individual-job"
 
-    if ("${env.BRANCH}" != "null" && "${env.BRANCH}" != "") {
-      branch = "${env.BRANCH}"
-    }
+  if ("${env.BRANCH}" != "null" && "${env.BRANCH}" != "") {
+    branch = "${env.BRANCH}"
+  }
 
-    if ("${env.RANCHER_CORRAL_PACKAGES_REPO_BRANCH}" != "null" && "${env.RANCHER_CORRAL_PACKAGES_REPO_BRANCH}" != "") {
-      corralBranch = "${env.RANCHER_CORRAL_PACKAGES_REPO_BRANCH}"
-    }
+  if ("${env.RANCHER_CORRAL_PACKAGES_REPO_BRANCH}" != "null" && "${env.RANCHER_CORRAL_PACKAGES_REPO_BRANCH}" != "") {
+    corralBranch = "${env.RANCHER_CORRAL_PACKAGES_REPO_BRANCH}"
+  }
 
-    def rancherRepo = scm.getUserRemoteConfigs()[0].getUrl()
-    if ("${env.REPO}" != "null" && "${env.REPO}" != "") {
-      rancherRepo = "${env.REPO}"
-    }
+  def rancherRepo = scm.getUserRemoteConfigs()[0].getUrl()
+  if ("${env.REPO}" != "null" && "${env.REPO}" != "") {
+    rancherRepo = "${env.REPO}"
+  }
 
-    def corralRepo = scm.getUserRemoteConfigs()[1].getUrl()
-    corralRepo = "https://github.com/slickwarren/suse-garage.git"
-  
-    def timeout = "60m"
-    if ("${env.TIMEOUT}" != "null" && "${env.TIMEOUT}" != "") {
-      timeout = "${env.TIMEOUT}" 
-    }
+  def corralRepo = scm.getUserRemoteConfigs()[1].getUrl()
+  corralRepo = "https://github.com/slickwarren/suse-garage.git"
 
-    def configFiles = []
-    wrap([$class: 'AnsiColorBuildWrapper', 'colorMapName': 'XTerm', 'defaultFg': 2, 'defaultBg':1]) {
-      withFolderProperties {
-        paramsMap = []
-        params.each {
-          if (it.value && it.value.trim() != "") {
-              paramsMap << "$it.key=$it.value"
-          }
+  def timeout = "60m"
+  if ("${env.TIMEOUT}" != "null" && "${env.TIMEOUT}" != "") {
+    timeout = "${env.TIMEOUT}"
+  }
+
+  def configFiles = []
+  wrap([$class: 'AnsiColorBuildWrapper', 'colorMapName': 'XTerm', 'defaultFg': 2, 'defaultBg': 1]) {
+    withFolderProperties {
+      paramsMap = []
+      params.each {
+        if (it.value && it.value.trim() != "") {
+          paramsMap << "$it.key=$it.value"
         }
-        withCredentials([ string(credentialsId: 'AWS_ACCESS_KEY_ID', variable: 'AWS_ACCESS_KEY_ID'),
-                          string(credentialsId: 'AWS_SECRET_ACCESS_KEY', variable: 'AWS_SECRET_ACCESS_KEY'),
-                          string(credentialsId: 'AWS_ACCESS_KEY_ID', variable: 'RANCHER_EKS_ACCESS_KEY'),
-                          string(credentialsId: 'AWS_SECRET_ACCESS_KEY', variable: 'RANCHER_EKS_SECRET_KEY'),
-                          string(credentialsId: 'AWS_SSH_PEM_KEY', variable: 'AWS_SSH_PEM_KEY'),
-                          string(credentialsId: 'AWS_SSH_PEM_KEY', variable: 'AWS_SSH_PEM_KEY'),
-                          string(credentialsId: 'AWS_SSH_RSA_KEY', variable: 'AWS_SSH_RSA_KEY'),
-                          string(credentialsId: 'AWS_RSA_KEY_NAME', variable: 'AWS_RSA_KEY_NAME'),
-                          string(credentialsId: 'RANCHER_SSH_KEY', variable: 'RANCHER_SSH_KEY'),
-                          string(credentialsId: 'RANCHER_REGISTRY_USER_NAME', variable: 'RANCHER_REGISTRY_USER_NAME'),
-                          string(credentialsId: 'RANCHER_REGISTRY_PASSWORD', variable: 'RANCHER_REGISTRY_PASSWORD'),
-                          string(credentialsId: 'ADMIN_PASSWORD', variable: 'ADMIN_PASSWORD'),
-                          string(credentialsId: 'USER_PASSWORD', variable: 'USER_PASSWORD'),
-                          string(credentialsId: 'RANCHER_VALID_TLS_CERT', variable: 'RANCHER_VALID_TLS_CERT'),
-                          string(credentialsId: 'RANCHER_VALID_TLS_KEY', variable: 'RANCHER_VALID_TLS_KEY'),
-                          string(credentialsId: 'RANCHER_BYO_TLS_CERT', variable: 'RANCHER_BYO_TLS_CERT'),
-                          string(credentialsId: 'RANCHER_BYO_TLS_KEY', variable: 'RANCHER_BYO_TLS_KEY'),
-                          string(credentialsId: 'SLACK_WEBHOOK', variable: 'SLACK_WEBHOOK'),
-                          string(credentialsId: 'QASE_AUTOMATION_TOKEN', variable: 'QASE_AUTOMATION_TOKEN')]) {
-          
+      }
+      withCredentials([string(credentialsId: 'AWS_ACCESS_KEY_ID', variable: 'AWS_ACCESS_KEY_ID'),
+        string(credentialsId: 'AWS_SECRET_ACCESS_KEY', variable: 'AWS_SECRET_ACCESS_KEY'),
+        string(credentialsId: 'AWS_ACCESS_KEY_ID', variable: 'RANCHER_EKS_ACCESS_KEY'),
+        string(credentialsId: 'AWS_SECRET_ACCESS_KEY', variable: 'RANCHER_EKS_SECRET_KEY'),
+        string(credentialsId: 'AWS_SSH_PEM_KEY', variable: 'AWS_SSH_PEM_KEY'),
+        string(credentialsId: 'AWS_SSH_PEM_KEY', variable: 'AWS_SSH_PEM_KEY'),
+        string(credentialsId: 'AWS_SSH_RSA_KEY', variable: 'AWS_SSH_RSA_KEY'),
+        string(credentialsId: 'AWS_RSA_KEY_NAME', variable: 'AWS_RSA_KEY_NAME'),
+        string(credentialsId: 'RANCHER_SSH_KEY', variable: 'RANCHER_SSH_KEY'),
+        string(credentialsId: 'RANCHER_REGISTRY_USER_NAME', variable: 'RANCHER_REGISTRY_USER_NAME'),
+        string(credentialsId: 'RANCHER_REGISTRY_PASSWORD', variable: 'RANCHER_REGISTRY_PASSWORD'),
+        string(credentialsId: 'ADMIN_PASSWORD', variable: 'ADMIN_PASSWORD'),
+        string(credentialsId: 'USER_PASSWORD', variable: 'USER_PASSWORD'),
+        string(credentialsId: 'RANCHER_VALID_TLS_CERT', variable: 'RANCHER_VALID_TLS_CERT'),
+        string(credentialsId: 'RANCHER_VALID_TLS_KEY', variable: 'RANCHER_VALID_TLS_KEY'),
+        string(credentialsId: 'RANCHER_BYO_TLS_CERT', variable: 'RANCHER_BYO_TLS_CERT'),
+        string(credentialsId: 'RANCHER_BYO_TLS_KEY', variable: 'RANCHER_BYO_TLS_KEY'),
+        string(credentialsId: 'SLACK_WEBHOOK', variable: 'SLACK_WEBHOOK'),
+        string(credentialsId: 'QASE_AUTOMATION_TOKEN', variable: 'QASE_AUTOMATION_TOKEN')
+      ]) {
+
         withEnv(paramsMap) {
           stage('Checkout') {
             deleteDir()
             dir("./rancher") {
               checkout([
-                      $class: 'GitSCM',
-                      branches: [[name: "*/${branch}"]],
-                      extensions: scm.extensions + [[$class: 'CleanCheckout']],
-                      userRemoteConfigs: [[url: rancherRepo]]
-                    ])
+                $class: 'GitSCM',
+                branches: [
+                  [name: "*/${branch}"]
+                ],
+                extensions: scm.extensions + [
+                  [$class: 'CleanCheckout']
+                ],
+                userRemoteConfigs: [
+                  [url: rancherRepo]
+                ]
+              ])
             }
             dir('./') {
               echo "cloning corral-packages repo"
 
               dir('./suse-garage') {
                 checkout([
-                      $class: 'GitSCM',
-                      branches: [[name: "*/${corralBranch}"]],
-                      extensions: scm.extensions + [[$class: 'CleanCheckout']],
-                      userRemoteConfigs: [[url: corralRepo]]
-                    ])
+                  $class: 'GitSCM',
+                  branches: [
+                    [name: "*/${corralBranch}"]
+                  ],
+                  extensions: scm.extensions + [
+                    [$class: 'CleanCheckout']
+                  ],
+                  userRemoteConfigs: [
+                    [url: corralRepo]
+                  ]
+                ])
               }
             }
           }
-          dir ("./") {
+          dir("./") {
             stage('Configure and Build') {
               config = config.replace('${AWS_SECRET_ACCESS_KEY}', env.AWS_SECRET_ACCESS_KEY)
               config = config.replace('${AWS_ACCESS_KEY_ID}', env.AWS_ACCESS_KEY_ID)
@@ -132,82 +146,82 @@ node("vsphere-vpn-1") {
 
               dir("./suse-garage/terraform/${env.PROVIDER}/") {
                 writeFile file: "terraform.tfvars", text: env.TF_VARS
-                writeFile file: "e2e.env", text: env.LOCAL_CLUSTER_VARS
+                writeFile file: "local.yaml", text: env.HARVESTER_KUBECONFIG
               }
 
               dir("./suse-garage/rancher-local/k3s-ha/") {
                 writeFile file: "e2e.env", text: env.LOCAL_CLUSTER_VARS
               }
 
-              dir ("./") {
+              dir("./") {
                 sh "./rancher/tests/v2/validation/configure.sh"
                 sh "docker build . -f ./rancher/tests/v2/validation/Dockerfile.vsphere -t ${imageName}"
                 sh "docker volume create --name ${validationVolume}"
               }
             }
             stage('Setup') {
-                sh returnStdout: true, script: 'wget -qO ./yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64'
-                sh returnStdout:true, script: 'chmod a+x ./yq'
+              sh returnStdout: true, script: 'wget -qO ./yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64'
+              sh returnStdout: true, script: 'chmod a+x ./yq'
             }
             stage("Bootstrap rancher cluster") {
               try {
-                sh "docker run --name ${configGeneratorContainer} -t " +
-                    "${imageName} sh -c \"${rootPath}../../rancherlabs/suse-garage/rancher-local/k3s-ha/e2e_create_rancher.sh\""
-              } catch(err) {
-                  sh "docker stop ${buildTestContainer}"
-                  sh "docker rm -v ${buildTestContainer}"
-                  sh "docker volume rm -f ${validationVolume}"
-                  error "Build Environment had failures. Good luck!"
+                sh "docker run --name ${configGeneratorContainer} -t -e PROVIDER=$env.PROVIDER " +
+                  "${imageName}  sh -c \"${rootPath}../../rancherlabs/suse-garage/rancher-local/k3s-ha/e2e_create_rancher.sh\""
+              } catch (err) {
+                sh "docker stop ${buildTestContainer}"
+                sh "docker rm -v ${buildTestContainer}"
+                sh "docker volume rm -f ${validationVolume}"
+                error "Build Environment had failures. Good luck!"
               }
             }
             try {
-              stage ('Generate child configs') {
-                  sh "docker run --volumes-from ${buildTestContainer} --name ${configGeneratorContainer} -t -e CATTLE_TEST_CONFIG=\$CATTLE_TEST_CONFIG " +
-                    "${imageName} sh -c \"${workPath}pipeline/releaseupgrade/releaseupgrade.sh\""
+              stage('Generate child configs') {
+                sh "docker run --volumes-from ${buildTestContainer} --name ${configGeneratorContainer} -t -e CATTLE_TEST_CONFIG=\$CATTLE_TEST_CONFIG " +
+                  "${imageName} sh -c \"${workPath}pipeline/releaseupgrade/releaseupgrade.sh\""
 
-                  sh "docker cp ${configGeneratorContainer}:${rootPath}${configsDir}/ ."
+                sh "docker cp ${configGeneratorContainer}:${rootPath}${configsDir}/ ."
 
-                  def configs = sh(script: "ls -1 ./${configsDir}", returnStdout: true).split()
+                def configs = sh(script: "ls -1 ./${configsDir}", returnStdout: true).split()
 
-                  for (int i = 0; i < configs.size(); i++) {
-                      def configName = configs[i]
-                      echo "pushing ${configName} to the global variable"
-                      configFiles << "${configName}"
-                  }
+                for (int i = 0; i < configs.size(); i++) {
+                  def configName = configs[i]
+                  echo "pushing ${configName} to the global variable"
+                  configFiles << "${configName}"
+                }
 
-                  println "Building the image again with the config files"
-                  sh "./rancher/tests/v2/validation/configure.sh"
-                  sh "docker build . -f ./rancher/tests/v2/validation/Dockerfile.vsphere -t ${imageName}"
+                println "Building the image again with the config files"
+                sh "./rancher/tests/v2/validation/configure.sh"
+                sh "docker build . -f ./rancher/tests/v2/validation/Dockerfile.vsphere -t ${imageName}"
               }
               stage('Deploys child clusters') {
                 try {
-                  jobs = [:]
+                  jobs = [: ]
 
                   configFiles.each {
                     def configPath = "./${configsDir}/$it"
                     def absoluteConfigPath = "${rootPath}${configsDir}/$it"
 
-                    def testCase = sh (
+                    def testCase = sh(
                       script: "./yq '.testCases.provisioningTestCase'  ${configPath}",
                       returnStdout: true
                     ).trim()
 
-                    def testPackage = sh (
+                    def testPackage = sh(
                       script: "./yq '.testCases.provisioningTestPackage'  ${configPath}",
                       returnStdout: true
                     ).trim()
 
-                    jobs["$it-provisioning"] = { 
-                      stage("Parallel Provisioning: $it"){
+                    jobs["$it-provisioning"] = {
+                      stage("Parallel Provisioning: $it") {
                         def containerName = "${jobName}${env.BUILD_NUMBER}_$it-provisioning"
                         try {
                           sh "docker run --volumes-from ${buildTestContainer} --name ${containerName} -t -e CATTLE_TEST_CONFIG=\"${absoluteConfigPath}\" " +
-                        "${imageName} sh -c \"gotestsum --format standard-verbose --packages=\"${testsDir}${testPackage}\" --junitfile ${testResultsOut} -- -tags=validation ${testCase} -timeout=\"60m\" -v\""
+                            "${imageName} sh -c \"gotestsum --format standard-verbose --packages=\"${testsDir}${testPackage}\" --junitfile ${testResultsOut} -- -tags=validation ${testCase} -timeout=\"60m\" -v\""
 
                           dir("./${patchedConfigsDir}") {
                             sh "docker cp ${containerName}:${rootPath}${configsDir}/$it ."
                           }
-                        } catch (err){
+                        } catch (err) {
                           sh "docker stop ${containerName}"
                           sh "docker rm -v ${containerName}"
                         }
@@ -218,70 +232,48 @@ node("vsphere-vpn-1") {
                     }
                   }
                   parallel jobs
-                } catch(err){
-                    echo "Provisioning tests had failures: " + err
+                } catch (err) {
+                  echo "Provisioning tests had failures: " + err
                 }
               }
               stage('Run Tests') {
-                  try {
-                    jobs = [:]
-                    
-                    // copy updated config file from the build test container
-                    sh "docker cp ${buildTestContainer}:${workPath}${filename} ./"
-                    sh "docker cp ${buildTestContainer}:${workPath}${qaseRun} ./"
-                    sh "./${qaseRun} --startRun=true"
+                try {
+                  jobs = [: ]
 
-                    def testRunID = sh (  
-                      script: "./yq '.id'  ./${testRunConfig}",
-                      returnStdout: true
-                    ).trim()
+                  // copy updated config file from the build test container
+                  sh "docker cp ${buildTestContainer}:${workPath}${filename} ./"
+                  sh "docker cp ${buildTestContainer}:${workPath}${qaseRun} ./"
+                  sh "./${qaseRun} --startRun=true"
 
-                    def mainRancherConfigPath = "./${filename}"
+                  def testRunID = sh(
+                    script: "./yq '.id'  ./${testRunConfig}",
+                    returnStdout: true
+                  ).trim()
 
-                    sh "./yq e '.rancher.cleanup = true' -i ${mainRancherConfigPath}"
-                    configFiles.each {
-                      try {
-                        def configPath = "./${patchedConfigsDir}/$it"
+                  def mainRancherConfigPath = "./${filename}"
 
-                        def tags = sh (
-                          script: "./yq '.testCases.tags'  ${configPath}",
-                          returnStdout: true
-                        ).trim()
+                  sh "./yq e '.rancher.cleanup = true' -i ${mainRancherConfigPath}"
+                  configFiles.each {
+                    try {
+                      def configPath = "./${patchedConfigsDir}/$it"
 
-                        def runFlag = sh (  
-                          script: "./yq '.testCases.runFlag'  ${configPath}",
-                          returnStdout: true
-                        ).trim()
+                      def tags = sh(
+                        script: "./yq '.testCases.tags'  ${configPath}",
+                        returnStdout: true
+                      ).trim()
 
-                        def clusterName = sh (  
-                          script: "./yq '.rancher.clusterName' ${configPath}",
-                          returnStdout: true
-                        ).trim()
+                      def runFlag = sh(
+                        script: "./yq '.testCases.runFlag'  ${configPath}",
+                        returnStdout: true
+                      ).trim()
 
-                        sh "./yq e '.rancher.clusterName = \"${clusterName}\"' -i ${mainRancherConfigPath}"
+                      def clusterName = sh(
+                        script: "./yq '.rancher.clusterName' ${configPath}",
+                        returnStdout: true
+                      ).trim()
 
-                        def configYaml = readFile(file: "${mainRancherConfigPath}")
+                      sh "./yq e '.rancher.clusterName = \"${clusterName}\"' -i ${mainRancherConfigPath}"
 
-                        def goValidationParams = [
-                          string(name: 'TIMEOUT', value: timeout),
-                          text(name: 'CONFIG', value: configYaml),
-                          string(name: 'REPO', value: "${rancherRepo}"),
-                          string(name: 'BRANCH', value: "${branch}"),
-                          string(name: 'QASE_TEST_RUN_ID', value: "${testRunID}"),
-                          string(name: 'TEST_PACKAGE', value: "${env.TEST_PACKAGE}"),
-                          string(name: 'GOTEST_TESTCASE', value: "${runFlag} -p 1"),
-                          string(name: 'TAGS', value: tags),
-                        ]
-
-                        jobs["$it-test-validation"] = { build job: individualJob, parameters: goValidationParams }
-                      } catch(err) {
-                        echo "Test Validation $it had failures: " + err
-                      }
-                    }
-
-                    if ("${env.TAGS}" != "") {
-                      sh "./yq e 'del(.provisioningInput.machinePools)' -i ${mainRancherConfigPath}"
-                      sh "./yq e 'del(.provisioningInput.nodePools)' -i ${mainRancherConfigPath}"
                       def configYaml = readFile(file: "${mainRancherConfigPath}")
 
                       def goValidationParams = [
@@ -291,29 +283,57 @@ node("vsphere-vpn-1") {
                         string(name: 'BRANCH', value: "${branch}"),
                         string(name: 'QASE_TEST_RUN_ID', value: "${testRunID}"),
                         string(name: 'TEST_PACKAGE', value: "${env.TEST_PACKAGE}"),
-                        string(name: 'TAGS', value: "${env.TAGS}"),
-                        string(name: 'GOTEST_TESTCASE', value: "${env.GOTEST_TESTCASE} -p 1"),
+                        string(name: 'GOTEST_TESTCASE', value: "${runFlag} -p 1"),
+                        string(name: 'TAGS', value: tags),
                       ]
 
-                      jobs["provisioning-test-validation"] = { build job: individualJob, parameters: goValidationParams }
-                    
+                      jobs["$it-test-validation"] = {
+                        build job: individualJob,
+                        parameters: goValidationParams
+                      }
+                    } catch (err) {
+                      echo "Test Validation $it had failures: " + err
                     }
-                    parallel jobs
-                  } catch(err) {
-                    echo "Test validations had failures: " + err
                   }
+
+                  if ("${env.TAGS}" != "") {
+                    sh "./yq e 'del(.provisioningInput.machinePools)' -i ${mainRancherConfigPath}"
+                    sh "./yq e 'del(.provisioningInput.nodePools)' -i ${mainRancherConfigPath}"
+                    def configYaml = readFile(file: "${mainRancherConfigPath}")
+
+                    def goValidationParams = [
+                      string(name: 'TIMEOUT', value: timeout),
+                      text(name: 'CONFIG', value: configYaml),
+                      string(name: 'REPO', value: "${rancherRepo}"),
+                      string(name: 'BRANCH', value: "${branch}"),
+                      string(name: 'QASE_TEST_RUN_ID', value: "${testRunID}"),
+                      string(name: 'TEST_PACKAGE', value: "${env.TEST_PACKAGE}"),
+                      string(name: 'TAGS', value: "${env.TAGS}"),
+                      string(name: 'GOTEST_TESTCASE', value: "${env.GOTEST_TESTCASE} -p 1"),
+                    ]
+
+                    jobs["provisioning-test-validation"] = {
+                      build job: individualJob,
+                      parameters: goValidationParams
+                    }
+
+                  }
+                  parallel jobs
+                } catch (err) {
+                  echo "Test validations had failures: " + err
+                }
                 sh "./${qaseRun} --startRun=false"
               }
-            } catch(err) {
+            } catch (err) {
               echo "Failures " + err
             }
-            
+
             stage('Cleanup Rancher Environment') {
               if ("${env.CLEANUP_RANCHER}" == "True" || "${env.CLEANUP_RANCHER}" == "true") {
                 try {
-                    sh "docker run --volumes-from ${buildTestContainer} --name ${cleanupTestContainer} -t --env-file ${envFile} " +
+                  sh "docker run --volumes-from ${buildTestContainer} --name ${cleanupTestContainer} -t --env-file ${envFile} " +
                     "${imageName} sh -c \"${workPath}pipeline/scripts/rancher_cleanup.sh\""
-                } catch(err) {
+                } catch (err) {
                   sh "docker stop ${buildTestContainer}"
                   sh "docker rm -v ${buildTestContainer}"
                   sh "docker stop ${configGeneratorContainer}"
