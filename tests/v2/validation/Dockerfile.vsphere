@@ -21,6 +21,8 @@ RUN wget https://releases.hashicorp.com/terraform/1.10.3/terraform_1.10.3_linux_
 # && firewall-cmd --permanent --add-service=ssh && firewall-cmd --reload 
 RUN zypper install -y -f docker && rpm -e --nodeps --noscripts containerd
 
+RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+
 RUN go mod download && \
     go install gotest.tools/gotestsum@latest
 

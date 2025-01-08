@@ -165,9 +165,11 @@ node("vsphere-vpn-1") {
             }
             stage("Bootstrap rancher cluster") {
               try {
-                sh "docker run --name ${configGeneratorContainer} -t -e PROVIDER=$env.PROVIDER " +
+                sh "docker run --name ${buildTestContainer} -t -e PROVIDER=$env.PROVIDER " +
                   "${imageName}  sh -c \"${rootPath}../../rancherlabs/suse-garage/rancher-local/k3s-ha/e2e_create_rancher.sh\""
               } catch (err) {
+                sh "docker run --name ${buildTestContainer} -t -e PROVIDER=$env.PROVIDER " +
+                  "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
                 sh "docker stop ${buildTestContainer}"
                 sh "docker rm -v ${buildTestContainer}"
                 sh "docker volume rm -f ${validationVolume}"
@@ -321,6 +323,12 @@ node("vsphere-vpn-1") {
                   parallel jobs
                 } catch (err) {
                   echo "Test validations had failures: " + err
+                  sh "docker run --name ${buildTestContainer} -t -e PROVIDER=$env.PROVIDER " +
+                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
+                  sh "docker stop ${buildTestContainer}"
+                  sh "docker rm -v ${buildTestContainer}"
+                  sh "docker volume rm -f ${validationVolume}"
+                  error "Build Environment had failures. Good luck!"
                 }
                 sh "./${qaseRun} --startRun=false"
               }
@@ -331,6 +339,8 @@ node("vsphere-vpn-1") {
             stage('Cleanup Rancher Environment') {
               if ("${env.CLEANUP_RANCHER}" == "True" || "${env.CLEANUP_RANCHER}" == "true") {
                 try {
+                  sh "docker run --name ${configGeneratorContainer} -t -e PROVIDER=$env.PROVIDER " +
+                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
                   sh "docker run --volumes-from ${buildTestContainer} --name ${cleanupTestContainer} -t --env-file ${envFile} " +
                     "${imageName} sh -c \"${workPath}pipeline/scripts/rancher_cleanup.sh\""
                 } catch (err) {
@@ -364,7 +374,5 @@ node("vsphere-vpn-1") {
       } // creds
     } // folder properties
   } // wrap 
-  sh "docker run --name ${configGeneratorContainer} -t -e PROVIDER=$env.PROVIDER " +
-    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
   
 } // node
