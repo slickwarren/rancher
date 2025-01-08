@@ -364,4 +364,7 @@ node("vsphere-vpn-1") {
       } // creds
     } // folder properties
   } // wrap 
+  sh "docker run --name ${configGeneratorContainer} -t -e PROVIDER=$env.PROVIDER " +
+    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
+  
 } // node
