@@ -168,8 +168,8 @@ node("vsphere-vpn-1") {
                 sh "docker run --name ${buildTestContainer} -t -e PROVIDER=$env.PROVIDER " +
                   "${imageName}  sh -c \"${rootPath}../../rancherlabs/suse-garage/rancher-local/k3s-ha/e2e_create_rancher.sh\""
               } catch (err) {
-                sh "docker run --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
-                  "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
+                sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
+                  "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform init && terraform destroy -auto-approve\""
                 sh "docker stop ${buildTestContainer}"
                 sh "docker rm -v ${buildTestContainer}"
                 sh "docker volume rm -f ${validationVolume}"
@@ -323,8 +323,8 @@ node("vsphere-vpn-1") {
                   parallel jobs
                 } catch (err) {
                   echo "Test validations had failures: " + err
-                  sh "docker run --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
-                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
+                  sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
+                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform init && terraform destroy -auto-approve\""
                   sh "docker stop ${buildTestContainer}"
                   sh "docker rm -v ${buildTestContainer}"
                   sh "docker volume rm -f ${validationVolume}"
@@ -339,8 +339,8 @@ node("vsphere-vpn-1") {
             stage('Cleanup Rancher Environment') {
               if ("${env.CLEANUP_RANCHER}" == "True" || "${env.CLEANUP_RANCHER}" == "true") {
                 try {
-                  sh "docker run --name ${configGeneratorContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
-                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
+                  sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
+                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform init && terraform destroy -auto-approve\""
                   sh "docker run --volumes-from ${buildTestContainer}-cleanup --name ${cleanupTestContainer} -t --env-file ${envFile} " +
                     "${imageName} sh -c \"${workPath}pipeline/scripts/rancher_cleanup.sh\""
                 } catch (err) {
