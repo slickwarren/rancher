@@ -38,15 +38,17 @@ const (
 )
 
 func main() {
+	logrus.Info("starting releaseUpgrade...")
 	os.Setenv(configEnvironmentKey, configPath)
 	defer os.Unsetenv(configEnvironmentKey)
 
 	haConfig := new(pipeline.HAConfig)
 	config.LoadConfig(pipeline.HAConfigKey, haConfig)
+	logrus.Info("loaded ha config")
 
 	rancherConfig := new(rancher.Config)
 	config.LoadConfig(rancher.ConfigurationFileKey, rancherConfig)
-
+	logrus.Info("loaded rancher config")
 	if haConfig.Host != "" {
 		rancherConfig.Host = haConfig.Host
 		rancherConfig.AdminToken = adminToken
@@ -85,11 +87,13 @@ func main() {
 
 	environmentFlags := new(environmentflag.Config)
 	config.LoadConfig(environmentflag.ConfigurationFileKey, environmentFlags)
+	logrus.Info("loaded flags")
 
 	//Overwrite/update flag to grab cluster names that are provisioned
 	environmentFlags.DesiredFlags += "|" + environmentflag.UpdateClusterName.String()
 
 	config.UpdateConfig(environmentflag.ConfigurationFileKey, environmentFlags)
+	logrus.Info("updated file of rancher config")
 
 	//make cattle-configs dir
 	err := file.NewDir(dirName)
@@ -105,6 +109,7 @@ func main() {
 
 	clusters := new(pipeline.Clusters)
 	config.LoadConfig(pipeline.ClustersConfigKey, clusters)
+	logrus.Info("loaded cluster config")
 
 	local := clusters.Local
 	if local != nil {
