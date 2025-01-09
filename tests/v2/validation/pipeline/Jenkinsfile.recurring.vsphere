@@ -166,7 +166,7 @@ node("vsphere-vpn-1") {
             stage("Bootstrap rancher cluster") {
               try {
                 sh "docker run --name ${buildTestContainer} -t -e PROVIDER=$env.PROVIDER " +
-                  "${imageName}  sh -c \"${rootPath}../../rancherlabs/suse-garage/rancher-local/k3s-ha/e2e_create_rancher.sh\""
+                  "${imageName}  sh -c \"${workPath}pipeline/scripts/setup_environment.sh;${workPath}pipeline/scripts/build_qase_auto_testrun.sh\" && ${rootPath}../../rancherlabs/suse-garage/rancher-local/k3s-ha/e2e_create_rancher.sh\""
               } catch (err) {
                 sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
                   "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform init && terraform destroy -auto-approve\""
