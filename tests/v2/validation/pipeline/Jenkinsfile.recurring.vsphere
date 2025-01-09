@@ -78,7 +78,8 @@ node("vsphere-vpn-1") {
         string(credentialsId: 'RANCHER_BYO_TLS_CERT', variable: 'RANCHER_BYO_TLS_CERT'),
         string(credentialsId: 'RANCHER_BYO_TLS_KEY', variable: 'RANCHER_BYO_TLS_KEY'),
         string(credentialsId: 'SLACK_WEBHOOK', variable: 'SLACK_WEBHOOK'),
-        string(credentialsId: 'QASE_AUTOMATION_TOKEN', variable: 'QASE_AUTOMATION_TOKEN')
+        string(credentialsId: 'QASE_AUTOMATION_TOKEN', variable: 'QASE_AUTOMATION_TOKEN'),
+        string(credentialsId: 'QASE_RUN_NAME', variable: 'QASE_RUN_NAME')
       ]) {
 
         withEnv(paramsMap) {
@@ -166,13 +167,12 @@ node("vsphere-vpn-1") {
             stage("Bootstrap rancher cluster") {
               try {
                 sh "docker run --name ${buildTestContainer} -t -e PROVIDER=$env.PROVIDER " +
-                  "${imageName}  sh -c \"${workPath}pipeline/scripts/setup_environment.sh;${workPath}pipeline/scripts/build_qase_auto_testrun.sh\" && ${rootPath}../../rancherlabs/suse-garage/rancher-local/k3s-ha/e2e_create_rancher.sh\""
+                  "${imageName}  sh -c \"${workPath}pipeline/scripts/setup_environment.sh;${workPath}pipeline/scripts/build_qase_auto_testrun.sh && ${rootPath}../../rancherlabs/suse-garage/rancher-local/k3s-ha/e2e_create_rancher.sh\""
               } catch (err) {
                 sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
-                  "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform init && terraform destroy -auto-approve\""
+                  "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
                 sh "docker stop ${buildTestContainer}"
                 sh "docker rm -v ${buildTestContainer}"
-                sh "docker volume rm -f ${validationVolume}"
                 error "Build Environment had failures. Good luck!"
               }
             }
@@ -324,10 +324,9 @@ node("vsphere-vpn-1") {
                 } catch (err) {
                   echo "Test validations had failures: " + err
                   sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
-                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform init && terraform destroy -auto-approve\""
+                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
                   sh "docker stop ${buildTestContainer}"
                   sh "docker rm -v ${buildTestContainer}"
-                  sh "docker volume rm -f ${validationVolume}"
                   error "Build Environment had failures. Good luck!"
                 }
                 sh "./${qaseRun} --startRun=false"
@@ -340,35 +339,30 @@ node("vsphere-vpn-1") {
               if ("${env.CLEANUP_RANCHER}" == "True" || "${env.CLEANUP_RANCHER}" == "true") {
                 try {
                   sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
-                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform init && terraform destroy -auto-approve\""
-                  sh "docker run --volumes-from ${buildTestContainer}-cleanup --name ${cleanupTestContainer} -t --env-file ${envFile} " +
+                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
+                  sh "docker run --volumes-from ${buildTestContainer}-cleanup2 --name ${cleanupTestContainer} -t --env-file ${envFile} " +
                     "${imageName} sh -c \"${workPath}pipeline/scripts/rancher_cleanup.sh\""
                 } catch (err) {
                   sh "docker stop ${buildTestContainer}"
                   sh "docker rm -v ${buildTestContainer}"
-                  sh "docker stop ${configGeneratorContainer}"
-                  sh "docker rm -v ${configGeneratorContainer}"
-                  sh "docker stop ${cleanupTestContainer}"
-                  sh "docker rm -v ${cleanupTestContainer}"
                   sh "docker rmi -f ${imageName}"
-                  sh "docker volume rm -f ${validationVolume}"
                   error "Cleanup had failures."
                 }
               }
             }
-            stage('Clean Up Images and Volume') {
-              echo 'Cleaning test images and volume.'
-              sh "docker stop ${buildTestContainer}"
-              sh "docker rm -v ${buildTestContainer}"
-              sh "docker stop ${configGeneratorContainer}"
-              sh "docker rm -v ${configGeneratorContainer}"
-              if ("${env.CLEANUP_RANCHER}" == "True" || "${env.CLEANUP_RANCHER}" == "true") {
-                sh "docker stop ${cleanupTestContainer}"
-                sh "docker rm -v ${cleanupTestContainer}"
-              }
-              sh "docker rmi -f ${imageName}"
-              sh "docker volume rm -f ${validationVolume}"
-            }
+            // stage('Clean Up Images and Volume') {
+            //   echo 'Cleaning test images and volume.'
+            //   sh "docker stop ${buildTestContainer}"
+            //   sh "docker rm -v ${buildTestContainer}"
+            //   sh "docker stop ${configGeneratorContainer}"
+            //   sh "docker rm -v ${configGeneratorContainer}"
+            //   if ("${env.CLEANUP_RANCHER}" == "True" || "${env.CLEANUP_RANCHER}" == "true") {
+            //     sh "docker stop ${cleanupTestContainer}"
+            //     sh "docker rm -v ${cleanupTestContainer}"
+            //   }
+            //   sh "docker rmi -f ${imageName}"
+            //   sh "docker volume rm -f ${validationVolume}"
+            // }
           } // dir 
         } // withEnv
       } // creds
