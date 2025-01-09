@@ -166,7 +166,7 @@ node("vsphere-vpn-1") {
                   "${imageName}  sh -c \"${rootPath}../../rancherlabs/suse-garage/rancher-local/k3s-ha/e2e_create_rancher.sh\""
               } catch (err) {
                 sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
-                  "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
+                  "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && rm .terraform.lock.hcl && terraform init && terraform destroy -auto-approve\""
                 sh "docker stop ${buildTestContainer}"
                 sh "docker rm -v ${buildTestContainer}"
                 error "Build Environment had failures. Good luck!"
@@ -311,7 +311,7 @@ node("vsphere-vpn-1") {
                 } catch (err) {
                   echo "Test validations had failures: " + err
                   sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
-                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
+                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && && rm .terraform.lock.hcl && terraform init &&  terraform destroy -auto-approve\""
                   sh "docker stop ${buildTestContainer}"
                   sh "docker rm -v ${buildTestContainer}"
                   error "Build Environment had failures. Good luck!"
@@ -325,7 +325,7 @@ node("vsphere-vpn-1") {
               if ("${env.CLEANUP_RANCHER}" == "True" || "${env.CLEANUP_RANCHER}" == "true") {
                 try {
                   sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup1 -t -e PROVIDER=$env.PROVIDER " +
-                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
+                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && && rm .terraform.lock.hcl && terraform init &&  terraform destroy -auto-approve\""
                   sh "docker run --volumes-from ${buildTestContainer}-cleanup2 --name ${cleanupTestContainer} -t --env-file ${envFile} " +
                     "${imageName} sh -c \"${workPath}pipeline/scripts/rancher_cleanup.sh\""
                 } catch (err) {
