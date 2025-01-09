@@ -18,8 +18,6 @@ node("vsphere-vpn-1") {
   def configsDir = "cattle-configs"
   def patchedConfigsDir = "patched-cattle-configs"
   def testResultsOut = "results.xml"
-  def qaseRun = "testrun"
-  def testRunConfig = "testrunconfig.yaml"
   def envFile = ".env"
   def rancherConfig = "rancher_env.config"
   def branch = "release/v2.10"
@@ -78,8 +76,6 @@ node("vsphere-vpn-1") {
         string(credentialsId: 'RANCHER_BYO_TLS_CERT', variable: 'RANCHER_BYO_TLS_CERT'),
         string(credentialsId: 'RANCHER_BYO_TLS_KEY', variable: 'RANCHER_BYO_TLS_KEY'),
         string(credentialsId: 'SLACK_WEBHOOK', variable: 'SLACK_WEBHOOK'),
-        string(credentialsId: 'QASE_AUTOMATION_TOKEN', variable: 'QASE_AUTOMATION_TOKEN'),
-        string(credentialsId: 'QASE_RUN_NAME', variable: 'QASE_RUN_NAME')
       ]) {
 
         withEnv(paramsMap) {
@@ -167,7 +163,7 @@ node("vsphere-vpn-1") {
             stage("Bootstrap rancher cluster") {
               try {
                 sh "docker run --name ${buildTestContainer} -t -e PROVIDER=$env.PROVIDER " +
-                  "${imageName}  sh -c \"${workPath}pipeline/scripts/setup_environment.sh;${workPath}pipeline/scripts/build_qase_auto_testrun.sh && ${rootPath}../../rancherlabs/suse-garage/rancher-local/k3s-ha/e2e_create_rancher.sh\""
+                  "${imageName}  sh -c \"${rootPath}../../rancherlabs/suse-garage/rancher-local/k3s-ha/e2e_create_rancher.sh\""
               } catch (err) {
                 sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
                   "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
@@ -244,13 +240,6 @@ node("vsphere-vpn-1") {
 
                   // copy updated config file from the build test container
                   sh "docker cp ${buildTestContainer}:${workPath}${filename} ./"
-                  sh "docker cp ${buildTestContainer}:${workPath}${qaseRun} ./"
-                  sh "./${qaseRun} --startRun=true"
-
-                  def testRunID = sh(
-                    script: "./yq '.id'  ./${testRunConfig}",
-                    returnStdout: true
-                  ).trim()
 
                   def mainRancherConfigPath = "./${filename}"
 
@@ -283,7 +272,6 @@ node("vsphere-vpn-1") {
                         text(name: 'CONFIG', value: configYaml),
                         string(name: 'REPO', value: "${rancherRepo}"),
                         string(name: 'BRANCH', value: "${branch}"),
-                        string(name: 'QASE_TEST_RUN_ID', value: "${testRunID}"),
                         string(name: 'TEST_PACKAGE', value: "${env.TEST_PACKAGE}"),
                         string(name: 'GOTEST_TESTCASE', value: "${runFlag} -p 1"),
                         string(name: 'TAGS', value: tags),
@@ -308,7 +296,6 @@ node("vsphere-vpn-1") {
                       text(name: 'CONFIG', value: configYaml),
                       string(name: 'REPO', value: "${rancherRepo}"),
                       string(name: 'BRANCH', value: "${branch}"),
-                      string(name: 'QASE_TEST_RUN_ID', value: "${testRunID}"),
                       string(name: 'TEST_PACKAGE', value: "${env.TEST_PACKAGE}"),
                       string(name: 'TAGS', value: "${env.TAGS}"),
                       string(name: 'GOTEST_TESTCASE', value: "${env.GOTEST_TESTCASE} -p 1"),
@@ -329,7 +316,6 @@ node("vsphere-vpn-1") {
                   sh "docker rm -v ${buildTestContainer}"
                   error "Build Environment had failures. Good luck!"
                 }
-                sh "./${qaseRun} --startRun=false"
               }
             } catch (err) {
               echo "Failures " + err
@@ -338,7 +324,7 @@ node("vsphere-vpn-1") {
             stage('Cleanup Rancher Environment') {
               if ("${env.CLEANUP_RANCHER}" == "True" || "${env.CLEANUP_RANCHER}" == "true") {
                 try {
-                  sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
+                  sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup1 -t -e PROVIDER=$env.PROVIDER " +
                     "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
                   sh "docker run --volumes-from ${buildTestContainer}-cleanup2 --name ${cleanupTestContainer} -t --env-file ${envFile} " +
                     "${imageName} sh -c \"${workPath}pipeline/scripts/rancher_cleanup.sh\""
