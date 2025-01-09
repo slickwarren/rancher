@@ -23,7 +23,6 @@ node("vsphere-vpn-1") {
   def branch = "release/v2.10"
   def corralBranch = "main"
   def config = env.CONFIG
-  def rancherToken = ""
   def filename = "config.yaml"
   def individualJob = "$jobName"
   individualJob = "${individualJob}-individual-job"
@@ -114,8 +113,14 @@ node("vsphere-vpn-1") {
               }
             }
           }
+          def rancherURL = ""
+          def rancherToken = ""
+          def harvesterURL = ""
+          def harvesterToken = ""
           dir("./") {
             stage('Configure and Build') {
+              sh returnStdout: true, script: 'wget -qO ./yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64'
+              sh returnStdout: true, script: 'chmod a+x ./yq'
               config = config.replace('${AWS_SECRET_ACCESS_KEY}', env.AWS_SECRET_ACCESS_KEY)
               config = config.replace('${AWS_ACCESS_KEY_ID}', env.AWS_ACCESS_KEY_ID)
               config = config.replace('${AWS_IAM_PROFILE}', env.AWS_IAM_PROFILE)
@@ -151,19 +156,28 @@ node("vsphere-vpn-1") {
               }
 
               dir("./") {
+                def harvesterConfigPath = "./suse-garage/terraform/${env.PROVIDER}/local.yaml"
+                harvesterURL = sh(
+                      script: "./yq '.clusters.[0].cluster.server'  ${harvesterConfigPath}",
+                      returnStdout: true
+                    ).trim().split('/k8s/')[0].split('/')[-1].trim()
+                harvesterToken = sh(
+                      script: "./yq '.users.[0].user.token'  ${harvesterConfigPath}",
+                      returnStdout: true
+                    ).trim()
+                    
                 sh "./rancher/tests/v2/validation/configure.sh"
                 sh "docker build . -f ./rancher/tests/v2/validation/Dockerfile.vsphere -t ${imageName}"
-                sh "docker volume create --name ${validationVolume}"
               }
-            }
-            stage('Setup') {
-              sh returnStdout: true, script: 'wget -qO ./yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64'
-              sh returnStdout: true, script: 'chmod a+x ./yq'
             }
             stage("Bootstrap rancher cluster") {
               try {
-                sh "docker run --name ${buildTestContainer} -t -e PROVIDER=$env.PROVIDER " +
-                  "${imageName}  sh -c \"${rootPath}../../rancherlabs/suse-garage/rancher-local/k3s-ha/e2e_create_rancher.sh\""
+                def rancher_output = sh(script:"docker run --name ${buildTestContainer} -t -e PROVIDER=$env.PROVIDER " +
+                  "${imageName}  sh -c \"${rootPath}../../rancherlabs/suse-garage/rancher-local/k3s-ha/e2e_create_rancher.sh\"", returnStdout: true).trim()
+                rancher_output = rancher_output.split('\n')
+                rancherURL = rancher_output[-3].split('/')[-1].trim()
+                rancherToken = rancher_output[-1].trim()
+
               } catch (err) {
                 sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
                   "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && rm .terraform.lock.hcl && terraform init && terraform destroy -auto-approve\""
@@ -243,6 +257,12 @@ node("vsphere-vpn-1") {
 
                   def mainRancherConfigPath = "./${filename}"
 
+                  sh "./yq e '.harvester.host = \"${harvesterURL}.sslip.io\"' -i ${mainRancherConfigPath}"
+                  sh "./yq e '.harvester.adminToken = \"${harvesterToken}\"' -i ${mainRancherConfigPath}"
+
+                  sh "./yq e '.rancher.host = \"${rancherURL}\"' -i ${mainRancherConfigPath}"
+                  sh "./yq e '.rancher.adminToken = \"${rancherToken}\"' -i ${mainRancherConfigPath}"
+
                   sh "./yq e '.rancher.cleanup = true' -i ${mainRancherConfigPath}"
                   configFiles.each {
                     try {
@@ -311,7 +331,7 @@ node("vsphere-vpn-1") {
                 } catch (err) {
                   echo "Test validations had failures: " + err
                   sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
-                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && && rm .terraform.lock.hcl && terraform init &&  terraform destroy -auto-approve\""
+                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && rm .terraform.lock.hcl && terraform init &&  terraform destroy -auto-approve\""
                   sh "docker stop ${buildTestContainer}"
                   sh "docker rm -v ${buildTestContainer}"
                   error "Build Environment had failures. Good luck!"
@@ -325,7 +345,7 @@ node("vsphere-vpn-1") {
               if ("${env.CLEANUP_RANCHER}" == "True" || "${env.CLEANUP_RANCHER}" == "true") {
                 try {
                   sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup1 -t -e PROVIDER=$env.PROVIDER " +
-                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && && rm .terraform.lock.hcl && terraform init &&  terraform destroy -auto-approve\""
+                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && rm .terraform.lock.hcl && terraform init &&  terraform destroy -auto-approve\""
                   sh "docker run --volumes-from ${buildTestContainer}-cleanup2 --name ${cleanupTestContainer} -t --env-file ${envFile} " +
                     "${imageName} sh -c \"${workPath}pipeline/scripts/rancher_cleanup.sh\""
                 } catch (err) {
