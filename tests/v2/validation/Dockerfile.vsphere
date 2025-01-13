@@ -14,13 +14,12 @@ COPY ["./rancher", "$WORKSPACE"]
 COPY ["./suse-garage", "$WORKSPACE2"]
 
 RUN zypper addrepo --refresh https://download.opensuse.org/repositories/system:/snappy/openSUSE_Leap_15.5 snappy && zypper --gpg-auto-import-keys refresh && zypper dup --from snappy
-
 RUN zypper refresh && zypper --non-interactive install gcc binutils glibc-devel-static ca-certificates git-core wget curl unzip tar vim less file xz gzip sed gawk iproute2 iptables jq helm
 RUN zypper --non-interactive install --no-recommends openssh-clients
-RUN wget https://releases.hashicorp.com/terraform/1.10.3/terraform_1.10.3_linux_amd64.zip && unzip terraform_1.10.3_linux_amd64.zip  && mv terraform /usr/local/bin
 # && firewall-cmd --permanent --add-service=ssh && firewall-cmd --reload 
-RUN zypper install -y -f docker && rpm -e --nodeps --noscripts containerd
+# RUN zypper install -y -f docker && rpm -e --nodeps --noscripts containerd
 
+RUN wget https://releases.hashicorp.com/terraform/1.10.3/terraform_1.10.3_linux_amd64.zip && unzip terraform_1.10.3_linux_amd64.zip  && mv terraform /usr/local/bin
 RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 
 RUN go mod download && \
@@ -28,22 +27,4 @@ RUN go mod download && \
 
 RUN cd $WORKSPACE2/rancher-local/k3s-ha && chmod 777 e2e_create_rancher.sh install_rancher_on_cluster.sh ips_from_terraform.sh create_k3s_server.sh .remote_script.sh
 
-# necessary to run if statements using [[ ]]
-SHELL ["/bin/bash", "-c"] 
-
-ARG RKE_VERSION
-RUN if [[ -n "$RKE_VERSION" ]] ; then echo installing latest version RKE && \
-    curl -0Ls https://github.com/rancher/rke/releases/latest/download/rke_linux-amd64 > rke ; else echo installing ${RKE_VERSION} version RKE && \
-    curl -0Ls https://github.com/rancher/rke/releases/download/$RKE_VERSION/rke_linux-amd64 > rke; fi;
-RUN mv rke /bin/rke && \
-    chmod +x /bin/rke
-
 RUN chmod -R 600 $WORKSPACE/tests/v2/validation/.ssh/
-
-ARG CLI_VERSION
-RUN if [[ -n "$CLI_VERSION" ]] ; then  \
-        echo installing CLI version $CLI_VERSION ; \
-        curl -LO https://github.com/rancher/cli/releases/download/$CLI_VERSION/rancher-linux-amd64-$CLI_VERSION.tar.gz ; \
-        tar -xf rancher-linux-amd64-$CLI_VERSION.tar.gz && \
-        mv rancher-$CLI_VERSION/rancher /bin/rancher && \
-        chmod +x /bin/rancher; fi;
