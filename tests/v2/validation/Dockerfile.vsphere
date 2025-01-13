@@ -5,6 +5,9 @@ ENV GOFLAGS=-buildvcs=false
 ENV GOPATH /root/go
 ENV PATH ${PATH}:/root/go/bin
 
+ARG TERRAFORM_VERSION=1.10.4
+ENV TERRAFORM_VERSION=${TERRAFORM_VERSION}
+
 ENV WORKSPACE ${GOPATH}/src/github.com/rancher/rancher
 ENV WORKSPACE2 ${GOPATH}/src/github.com/rancherlabs/suse-garage
 
@@ -19,7 +22,7 @@ RUN zypper --non-interactive install --no-recommends openssh-clients
 # && firewall-cmd --permanent --add-service=ssh && firewall-cmd --reload 
 # RUN zypper install -y -f docker && rpm -e --nodeps --noscripts containerd
 
-RUN wget https://releases.hashicorp.com/terraform/1.10.3/terraform_1.10.3_linux_amd64.zip && unzip terraform_1.10.3_linux_amd64.zip  && mv terraform /usr/local/bin
+RUN wget "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip" && unzip "terraform_${TERRAFORM_VERSION}_linux_amd64.zip"  && mv terraform /usr/local/bin
 RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 
 RUN go mod download && \

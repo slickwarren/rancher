@@ -166,7 +166,7 @@ node("vsphere-vpn-1") {
                     ).trim()
                     
                 sh "./rancher/tests/v2/validation/configure.sh"
-                sh "docker build . -f ./rancher/tests/v2/validation/Dockerfile.vsphere -t ${imageName}"
+                sh "docker build --build-arg TERRAFORM_VERSION=$TERRAFORM_VERSION . -f ./rancher/tests/v2/validation/Dockerfile.vsphere -t ${imageName}"
                 sh "docker volume create --name vpn-recurring-vol${env.BUILD_NUMBER}"
               }
             }
@@ -238,7 +238,7 @@ node("vsphere-vpn-1") {
 
                   println "Building the image again with the config files"
                   sh "./rancher/tests/v2/validation/configure.sh"
-                  sh "docker build . -f ./rancher/tests/v2/validation/Dockerfile.vsphere -t ${imageName}"
+                  sh "docker build --build-arg TERRAFORM_VERSION=$TERRAFORM_VERSION . -f ./rancher/tests/v2/validation/Dockerfile.vsphere -t ${imageName}"
                 } catch (err) {
                   sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
                     "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
