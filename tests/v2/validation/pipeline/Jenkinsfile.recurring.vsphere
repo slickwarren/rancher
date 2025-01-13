@@ -186,6 +186,23 @@ node("vsphere-vpn-1") {
                 error "Build Environment had failures. Good luck!"
               }
             }
+            stage("register harvester with rancher") {
+              sh "docker cp ${buildTestContainer}:${workPath}${filename} ./"
+
+              def mainRancherConfigPath = "./${filename}"
+
+              sh "./yq e '.harvester.host = \"${harvesterURL}.sslip.io\"' -i ${mainRancherConfigPath}"
+              sh "./yq e '.harvester.adminToken = \"${harvesterToken}\"' -i ${mainRancherConfigPath}"
+
+              sh "./yq e '.rancher.host = \"${rancherURL}\"' -i ${mainRancherConfigPath}"
+              sh "./yq e '.rancher.adminToken = \"${rancherToken}\"' -i ${mainRancherConfigPath}"
+
+              sh "./yq e '.rancher.cleanup = true' -i ${mainRancherConfigPath}"
+
+              sh "docker run --volumes-from ${buildTestContainer} --name register-harvester-${env.BUILD_NUMBER} -t -e CATTLE_TEST_CONFIG=\"${mainRancherConfigPath}\" " +
+                            "${imageName} sh -c \"gotestsum --format standard-verbose --packages=\"${testsDir}${testPackage}\" --junitfile ${testResultsOut} -- -tags=validation ${testCase} -timeout=\"60m\" -v\""
+
+            }
             try {
               stage('Generate child configs') {
                 sh "docker run --volumes-from ${buildTestContainer} --name ${configGeneratorContainer} -t -e CATTLE_TEST_CONFIG=\$CATTLE_TEST_CONFIG " +
