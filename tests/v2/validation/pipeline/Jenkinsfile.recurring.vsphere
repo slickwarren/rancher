@@ -13,7 +13,6 @@ node("vsphere-vpn-1") {
   def configGeneratorContainer = "${jobName}${env.BUILD_NUMBER}_generator"
   def cleanupTestContainer = "${jobName}${env.BUILD_NUMBER}-cleanuptest"
   def imageName = "rancher-recurring-runs-validation-${jobName}${env.BUILD_NUMBER}"
-  def validationVolume = "RecurringRunsSharedVolume-${jobName}${env.BUILD_NUMBER}"
   def testsDir = "/root/go/src/github.com/rancher/rancher/tests/v2/validation/"
   def configsDir = "cattle-configs"
   def patchedConfigsDir = "patched-cattle-configs"
@@ -168,25 +167,31 @@ node("vsphere-vpn-1") {
                     
                 sh "./rancher/tests/v2/validation/configure.sh"
                 sh "docker build . -f ./rancher/tests/v2/validation/Dockerfile.vsphere -t ${imageName}"
+                sh "docker volume create --name vpn-recurring-vol${env.BUILD_NUMBER}"
               }
             }
             stage("Bootstrap rancher cluster") {
               try {
-                def rancher_output = sh(script:"docker run --name ${buildTestContainer} -t -e PROVIDER=$env.PROVIDER " +
+                def rancher_output = sh(script:"docker run -v vpn-recurring-vol${env.BUILD_NUMBER}:/root --name ${buildTestContainer} -t -e PROVIDER=$env.PROVIDER " +
                   "${imageName}  sh -c \"${rootPath}../../rancherlabs/suse-garage/rancher-local/k3s-ha/e2e_create_rancher.sh\"", returnStdout: true).trim()
+                
                 rancher_output = rancher_output.split('\n')
                 rancherURL = rancher_output[-3].split('/')[-1].trim()
                 rancherToken = rancher_output[-1].trim()
 
               } catch (err) {
                 sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
-                  "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && rm .terraform.lock.hcl && terraform init && terraform destroy -auto-approve\""
+                  "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
                 sh "docker stop ${buildTestContainer}"
                 sh "docker rm -v ${buildTestContainer}"
+                sh "docker stop ${buildTestContainer}-cleanup"
+                sh "docker rmi -f ${imageName}"
+                sh "docker rm -v ${buildTestContainer}-cleanup"
                 error "Build Environment had failures. Good luck!"
               }
             }
             stage("register harvester with rancher") {
+              
               sh "docker cp ${buildTestContainer}:${workPath}${filename} ./"
 
               def mainRancherConfigPath = "./${filename}"
@@ -198,30 +203,54 @@ node("vsphere-vpn-1") {
               sh "./yq e '.rancher.adminToken = \"${rancherToken}\"' -i ${mainRancherConfigPath}"
 
               sh "./yq e '.rancher.cleanup = true' -i ${mainRancherConfigPath}"
-
-              sh "docker run --volumes-from ${buildTestContainer} --name register-harvester-${env.BUILD_NUMBER} -t -e CATTLE_TEST_CONFIG=\"${mainRancherConfigPath}\" " +
-                            "${imageName} sh -c \"gotestsum --format standard-verbose --packages=\"${testsDir}${testPackage}\" --junitfile ${testResultsOut} -- -tags=validation ${testCase} -timeout=\"60m\" -v\""
+              try {
+                sh "docker run --volumes-from ${buildTestContainer} --name register-harvester-${env.BUILD_NUMBER} -t -e CATTLE_TEST_CONFIG=\"${mainRancherConfigPath}\" " +
+                              "${imageName} sh -c \"gotestsum --format standard-verbose --packages=\"${testsDir}harvester\" --junitfile ${testResultsOut} -- -tags=validation -run ^TestHarvesterTestSuite\$ -timeout=\"60m\" -v\""
+              } catch(err) {
+                sh "docker stop register-harvester-${env.BUILD_NUMBER}"
+                sh "docker rm -v register-harvester-${env.BUILD_NUMBER}"
+                sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
+                  "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
+                sh "docker stop ${buildTestContainer}"
+                sh "docker rm -v ${buildTestContainer}"
+                sh "docker stop ${buildTestContainer}-cleanup"
+                sh "docker rmi -f ${imageName}"
+                sh "docker rm -v ${buildTestContainer}-cleanup"
+                error "Harvester Registration had failed. Good luck!"
+              }
 
             }
             try {
               stage('Generate child configs') {
-                sh "docker run --volumes-from ${buildTestContainer} --name ${configGeneratorContainer} -t -e CATTLE_TEST_CONFIG=\$CATTLE_TEST_CONFIG " +
-                  "${imageName} sh -c \"${workPath}pipeline/releaseupgrade/releaseupgrade.sh\""
+                try {
+                  sh "docker run --volumes-from ${buildTestContainer} --name ${configGeneratorContainer} -t -e CATTLE_TEST_CONFIG=\$CATTLE_TEST_CONFIG " +
+                    "${imageName} sh -c \"${workPath}pipeline/releaseupgrade/releaseupgrade.sh\""
 
-                sh "docker cp ${configGeneratorContainer}:${rootPath}${configsDir}/ ."
+                  sh "docker cp ${configGeneratorContainer}:${rootPath}${configsDir}/ ."
 
-                def configs = sh(script: "ls -1 ./${configsDir}", returnStdout: true).split()
+                  def configs = sh(script: "ls -1 ./${configsDir}", returnStdout: true).split()
 
-                for (int i = 0; i < configs.size(); i++) {
-                  def configName = configs[i]
-                  echo "pushing ${configName} to the global variable"
-                  configFiles << "${configName}"
+                  for (int i = 0; i < configs.size(); i++) {
+                    def configName = configs[i]
+                    echo "pushing ${configName} to the global variable"
+                    configFiles << "${configName}"
+                  }
+
+                  println "Building the image again with the config files"
+                  sh "./rancher/tests/v2/validation/configure.sh"
+                  sh "docker build . -f ./rancher/tests/v2/validation/Dockerfile.vsphere -t ${imageName}"
+                } catch (err) {
+                  sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
+                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
+                  sh "docker stop ${buildTestContainer}"
+                  sh "docker rm -v ${buildTestContainer}"
+                  sh "docker stop ${buildTestContainer}-cleanup"
+                  sh "docker rm -v ${buildTestContainer}-cleanup"
+                  sh "docker rmi -f ${imageName}"
+                  error "Build Environment had failures. Good luck!"
+                  error 'config generation failed...'
                 }
-
-                println "Building the image again with the config files"
-                sh "./rancher/tests/v2/validation/configure.sh"
-                sh "docker build . -f ./rancher/tests/v2/validation/Dockerfile.vsphere -t ${imageName}"
-              }
+              } 
               stage('Deploys child clusters') {
                 try {
                   jobs = [: ]
@@ -251,10 +280,10 @@ node("vsphere-vpn-1") {
                             sh "docker cp ${containerName}:${rootPath}${configsDir}/$it ."
                           }
                         } catch (err) {
-                          sh "docker stop ${containerName}"
-                          sh "docker rm -v ${containerName}"
+                          echo "failed to create glue code cluster: " + err
                         }
 
+                        // fail or not, remove the container
                         sh "docker stop ${containerName}"
                         sh "docker rm -v ${containerName}"
                       }
@@ -348,10 +377,11 @@ node("vsphere-vpn-1") {
                 } catch (err) {
                   echo "Test validations had failures: " + err
                   sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
-                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && rm .terraform.lock.hcl && terraform init &&  terraform destroy -auto-approve\""
+                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
                   sh "docker stop ${buildTestContainer}"
                   sh "docker rm -v ${buildTestContainer}"
-                  error "Build Environment had failures. Good luck!"
+                  sh "docker rmi -f ${imageName}"
+                  error "Testing had failures. Good luck!"
                 }
               }
             } catch (err) {
@@ -359,33 +389,19 @@ node("vsphere-vpn-1") {
             }
 
             stage('Cleanup Rancher Environment') {
-              if ("${env.CLEANUP_RANCHER}" == "True" || "${env.CLEANUP_RANCHER}" == "true") {
-                try {
-                  sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup1 -t -e PROVIDER=$env.PROVIDER " +
-                    "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && rm .terraform.lock.hcl && terraform init &&  terraform destroy -auto-approve\""
-                  sh "docker run --volumes-from ${buildTestContainer}-cleanup2 --name ${cleanupTestContainer} -t --env-file ${envFile} " +
-                    "${imageName} sh -c \"${workPath}pipeline/scripts/rancher_cleanup.sh\""
-                } catch (err) {
-                  sh "docker stop ${buildTestContainer}"
-                  sh "docker rm -v ${buildTestContainer}"
-                  sh "docker rmi -f ${imageName}"
-                  error "Cleanup had failures."
-                }
+              try {
+                sh "docker run --volumes-from ${buildTestContainer} --name ${buildTestContainer}-cleanup -t -e PROVIDER=$env.PROVIDER " +
+                  "${imageName}  sh -c \"cd ${rootPath}../../rancherlabs/suse-garage/terraform/$env.PROVIDER && terraform destroy -auto-approve\""
+                sh "docker stop ${buildTestContainer}"
+                sh "docker rm -v ${buildTestContainer}"
+                sh "docker stop ${buildTestContainer}-cleanup"
+                sh "docker rm -v ${buildTestContainer}-cleanup"
+                sh "docker rmi -f ${imageName}"
+                echo "Everything went smoothly. "
+              } catch (err) {
+                error "Cleanup failed!"
               }
             }
-            // stage('Clean Up Images and Volume') {
-            //   echo 'Cleaning test images and volume.'
-            //   sh "docker stop ${buildTestContainer}"
-            //   sh "docker rm -v ${buildTestContainer}"
-            //   sh "docker stop ${configGeneratorContainer}"
-            //   sh "docker rm -v ${configGeneratorContainer}"
-            //   if ("${env.CLEANUP_RANCHER}" == "True" || "${env.CLEANUP_RANCHER}" == "true") {
-            //     sh "docker stop ${cleanupTestContainer}"
-            //     sh "docker rm -v ${cleanupTestContainer}"
-            //   }
-            //   sh "docker rmi -f ${imageName}"
-            //   sh "docker volume rm -f ${validationVolume}"
-            // }
           } // dir 
         } // withEnv
       } // creds
