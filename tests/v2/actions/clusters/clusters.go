@@ -27,17 +27,18 @@ const (
 	controlPlaneRole = "control-plane-role"
 	workerRole       = "worker-role"
 
-	externalCloudProviderString = "cloud-provider=external"
-	kubeletArgKey               = "kubelet-arg"
-	kubeletAPIServerArgKey      = "kubeapi-server-arg"
-	kubeControllerManagerArgKey = "kube-controller-manager-arg"
-	cloudProviderAnnotationName = "cloud-provider-name"
-	disableCloudController      = "disable-cloud-controller"
-	protectKernelDefaults       = "protect-kernel-defaults"
-	localcluster                = "fleet-local/local"
-	rancherRestricted           = "rancher-restricted"
-	rke1HardenedGID             = 52034
-	rke1HardenedUID             = 52034
+	externalCloudProviderString       = "cloud-provider=external"
+	kubeletArgKey                     = "kubelet-arg"
+	kubeletAPIServerArgKey            = "kubeapi-server-arg"
+	kubeControllerManagerArgKey       = "kube-controller-manager-arg"
+	cloudProviderAnnotationName       = "cloud-provider-name"
+	cloudProviderConfigAnnotationName = "cloud-provider-config"
+	disableCloudController            = "disable-cloud-controller"
+	protectKernelDefaults             = "protect-kernel-defaults"
+	localcluster                      = "fleet-local/local"
+	rancherRestricted                 = "rancher-restricted"
+	rke1HardenedGID                   = 52034
+	rke1HardenedUID                   = 52034
 )
 
 // CreateRancherBaselinePSACT creates custom PSACT called rancher-baseline which sets each PSS to baseline.
@@ -378,6 +379,17 @@ func NewK3SRKE2ClusterConfig(clusterName, namespace string, clustersConfig *Clus
 			},
 				nil),
 		)
+	} else if clustersConfig.CloudProvider == string(provisioninginput.HarvesterProviderName.String()) {
+		machineSelectorConfigs = append(machineSelectorConfigs,
+			RKESystemConfigTemplate(map[string]interface{}{
+				cloudProviderConfigAnnotationName: clustersConfig.AddOnConfig.AdditionalManifest,
+				cloudProviderAnnotationName:       provisioninginput.HarvesterProviderName.String(),
+				protectKernelDefaults:             false,
+			},
+				nil),
+		)
+		// for harvester only, additionalManifest is used to carry the kubeconfig secret in automation
+		chartAdditionalManifest = ""
 	}
 
 	rkeSpecCommon := rkev1.RKEClusterSpecCommon{

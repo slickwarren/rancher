@@ -51,6 +51,7 @@ func NewHarvesterMachineConfig(generatedPoolName, namespace string) []unstructur
 		machineConfig.Object["imageName"] = harvesterMachineConfig.ImageName
 		machineConfig.Object["vmNamespace"] = harvesterMachineConfigs.VMNamespace
 		machineConfig.Object["sshUser"] = harvesterMachineConfig.SSHUser
+		machineConfig.Object["userData"] = "I2Nsb3VkLWNvbmZpZwpwYWNrYWdlX3VwZGF0ZTogdHJ1ZQpwYWNrYWdlczoKICAtIHFlbXUtZ3Vlc3QtYWdlbnQKcnVuY21kOgogIC0gLSBzeXN0ZW1jdGwKICAgIC0gZW5hYmxlCiAgICAtIC0tbm93CiAgICAtIHFlbXUtZ3Vlc3QtYWdlbnQuc2VydmljZQo="
 
 		multiConfig = append(multiConfig, machineConfig)
 	}

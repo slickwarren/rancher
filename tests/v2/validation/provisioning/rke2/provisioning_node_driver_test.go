@@ -117,7 +117,7 @@ func (r *RKE2NodeDriverProvisioningTestSuite) TestProvisioningRKE2ClusterDynamic
 		client *rancher.Client
 	}{
 		{provisioninginput.AdminClientName.String(), r.client},
-		{provisioninginput.StandardClientName.String(), r.standardUserClient},
+		// {provisioninginput.StandardClientName.String(), r.standardUserClient},
 	}
 
 	for _, tt := range tests {

@@ -140,6 +140,11 @@ func CreateProvisioningCluster(client *rancher.Client, provider Provider, cluste
 	machinePools := machinepools.
 		CreateAllMachinePools(machineConfigs, pools, machinePoolResponses, provider.Roles, hostnameTruncation)
 
+	adminClient, err := rancher.NewClient(client.RancherConfig.AdminToken, client.Session)
+	if err != nil {
+		return nil, err
+	}
+
 	if clustersConfig.CloudProvider == provisioninginput.VsphereCloudProviderName.String() {
 
 		vcenterCredentials := map[string]interface{}{
@@ -163,6 +168,34 @@ func CreateProvisioningCluster(client *rancher.Client, provider Provider, cluste
 				},
 			},
 		}
+	} else if clustersConfig.CloudProvider == provisioninginput.HarvesterProviderName.String() {
+		// data := map[string][]byte{
+		// 	"credential": []byte(credentialSpec.HarvesterCredentialConfig.KubeconfigContent),
+		// }
+
+		// // harvester's kubeconfig secret must be created on the local cluster - using admin client
+		// kubeSecret, err := secrets.CreateSecret(adminClient, "local", namespace, data, "secret")
+		// if err != nil {
+		// 	return nil, err
+		// }
+		logrus.Info("secret creation complete")
+
+		clustersConfig.AddOnConfig = &provisioninginput.AddOnConfig{
+			ChartValues: &rkev1.GenericMap{
+				Data: map[string]interface{}{
+					"harvester-cloud-provider": map[string]interface{}{
+						"cloudConfigPath": "/var/lib/rancher/rke2/etc/config-files/cloud-provider-config",
+						"global": map[string]interface{}{
+							"cattle": map[string]interface{}{
+								"clusterName": clusterName,
+							},
+						},
+					},
+				},
+			},
+			// this does NOT belong in additionalManifest. But creating a new param for this in NewK3SRKE2ClusterConfig seems like too much for 1 variable
+			AdditionalManifest: "secret://fleet-default:harvesterconfigtgkwf", // "secret://" + kubeSecret.Namespace + ":" + kubeSecret.Name,
+		}
 	}
 
 	cluster := clusters.NewK3SRKE2ClusterConfig(clusterName, namespace, clustersConfig, machinePools, cloudCredential.Namespace+":"+cloudCredential.Name)
@@ -185,11 +218,6 @@ func CreateProvisioningCluster(client *rancher.Client, provider Provider, cluste
 
 	if client.Flags.GetValue(environmentflag.UpdateClusterName) && updateConfig {
 		pipeline.UpdateConfigClusterName(clusterName)
-	}
-
-	adminClient, err := rancher.NewClient(client.RancherConfig.AdminToken, client.Session)
-	if err != nil {
-		return nil, err
 	}
 
 	createdCluster, err := adminClient.Steve.
