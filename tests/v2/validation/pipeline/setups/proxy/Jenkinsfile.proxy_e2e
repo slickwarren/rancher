@@ -1,0 +1,234 @@
+#!groovy
+node {
+    def rootPath = "/root/go/src/github.com/rancher/rancher/"
+    def homePath = pwd() + "/"
+    def tfpRootPath = "/root/src/github.com/rancher/tfp-automation/"
+    def workPath = "/root/go/src/github.com/rancher/rancher/tests/v2/validation/"
+    def jobName = "${JOB_NAME}"
+    if (jobName.contains('/')) { 
+      jobNames = jobName.split('/')
+      jobName = jobNames[jobNames.size() - 1] 
+    }
+    def golangTestContainer = "${jobName}${env.BUILD_NUMBER}-golangtest"
+    def buildTestContainer = "${jobName}${env.BUILD_NUMBER}-buildtest"
+    def buildTFPContainer = "${jobName}${env.BUILD_NUMBER}-buildtest"
+    def cleanupTestContainer = "${jobName}${env.BUILD_NUMBER}-cleanuptest"
+    def imageName = "pit-recurring-proxy-validation-${jobName}${env.BUILD_NUMBER}"
+    def validationVolume = "PITPrxVldSharedVolume-${jobName}${env.BUILD_NUMBER}"
+    def tfpImageName = "pit-recurring-proxy-tfp-${jobName}${env.BUILD_NUMBER}"
+    def setupVolume = "PITPrxSharedVolume-${jobName}${env.BUILD_NUMBER}"
+    def testsDir = "/root/go/src/github.com/rancher/rancher/tests/v2/validation/"
+    def configsDir = "cattle-configs"
+    def patchedConfigsDir = "patched-cattle-configs"
+    def testResultsOut = "results.xml"
+    def qaseRun = "testrun"
+    def testRunConfig = "testrunconfig.yaml"
+    def envFile = ".env"
+    def rancherConfig = "rancher_env.config"
+    def branch = "main"
+    def tfpBranch = "main"
+    def config = env.CONFIG
+    def tfpConfig = env.TFP_CONFIG
+    def rancherToken = ""
+    def tfpfilename = "tfpconfig.yaml"
+    def filename = "config.yaml"
+    def individualJob = (jobName =~ /(go-pit-proxy-[a-z]+)/)[0][1]
+    individualJob = "${individualJob}-individual-job"
+
+    if ("${env.BRANCH}" != "null" && "${env.BRANCH}" != "") {
+      branch = "${env.BRANCH}"
+    }
+
+    if ("${env.RANCHER_TFP_AUTOMATION_REPO_BRANCH}" != "null" && "${env.RANCHER_TFP_AUTOMATION_REPO_BRANCH}" != "") {
+      tfpBranch = "${env.RANCHER_TFP_AUTOMATION_REPO_BRANCH}"
+    }
+
+    def rancherRepo = scm.getUserRemoteConfigs()[0].getUrl()
+    if ("${env.REPO}" != "null" && "${env.REPO}" != "") {
+      rancherRepo = "${env.REPO}"
+    }
+
+    def tfpRepo = scm.getUserRemoteConfigs()[1].getUrl()
+    if ("${env.RANCHER_TFP_AUTOMATION_REPO_URL}" != "null" && "${env.RANCHER_TFP_AUTOMATION_REPO_URL}" != "") {
+      tfpRepo = "${env.RANCHER_TFP_AUTOMATION_REPO_URL}"
+    }
+  
+    def timeout = "60m"
+    if ("${env.TIMEOUT}" != "null" && "${env.TIMEOUT}" != "") {
+      timeout = "${env.TIMEOUT}" 
+    }
+
+    def configFiles = []
+    wrap([$class: 'AnsiColorBuildWrapper', 'colorMapName': 'XTerm', 'defaultFg': 2, 'defaultBg':1]) {
+      withFolderProperties {
+        paramsMap = []
+        params.each {
+          if (it.value && it.value.trim() != "") {
+              paramsMap << "$it.key=$it.value"
+          }
+        }
+        withCredentials([ string(credentialsId: 'AWS_ACCESS_KEY_ID', variable: 'AWS_ACCESS_KEY_ID'),
+                          string(credentialsId: 'AWS_SECRET_ACCESS_KEY', variable: 'AWS_SECRET_ACCESS_KEY'),
+                          string(credentialsId: 'AWS_SSH_PEM_KEY', variable: 'AWS_SSH_PEM_KEY'),
+                          string(credentialsId: 'ADMIN_PASSWORD', variable: 'ADMIN_PASSWORD'),
+                          string(credentialsId: 'USER_PASSWORD', variable: 'USER_PASSWORD'),]) {
+          
+        withEnv(paramsMap) {
+          stage('Checkout') {
+            deleteDir()
+            dir("./rancher") {
+              checkout([
+                      $class: 'GitSCM',
+                      branches: [[name: "*/${branch}"]],
+                      extensions: scm.extensions + [[$class: 'CleanCheckout']],
+                      userRemoteConfigs: [[url: rancherRepo]]
+                    ])
+            }
+            dir('./') {
+              echo "cloning tfp-automation repo"
+
+              dir('./tfp-automation') {
+                checkout([
+                      $class: 'GitSCM',
+                      branches: [[name: "*/${tfpBranch}"]],
+                      extensions: scm.extensions + [[$class: 'CleanCheckout']],
+                      userRemoteConfigs: [[url: tfpRepo]]
+                    ])
+              }
+            }
+          }
+          dir ("./") {
+            stage('Configure and Build') {
+              config = config.replace('${AWS_SECRET_ACCESS_KEY}', env.AWS_SECRET_ACCESS_KEY)
+              config = config.replace('${AWS_ACCESS_KEY_ID}', env.AWS_ACCESS_KEY_ID)
+              config = config.replace('${AWS_IAM_PROFILE}', env.AWS_IAM_PROFILE)
+              config = config.replace('${AWS_REGION}', env.AWS_REGION)
+              config = config.replace('${AWS_VPC}', env.AWS_VPC)
+              config = config.replace('${AWS_SECURITY_GROUPS}', env.AWS_SECURITY_GROUPS)
+              config = config.replace('${ADMIN_PASSWORD}', env.ADMIN_PASSWORD)
+            
+
+              writeFile file: tfpfilename, text: tfpConfig
+
+              if (env.AWS_SSH_PEM_KEY && env.AWS_SSH_KEY_NAME) {
+                dir("./rancher/tests/v2/validation/.ssh") {
+                  def decoded = new String(AWS_SSH_PEM_KEY.decodeBase64())
+                  writeFile file: AWS_SSH_KEY_NAME, text: decoded
+                  writeFile file: 'key.pem', text: decoded
+                }
+              }
+              dir("./rancher/tests/v2/validation") {
+                writeFile file: filename, text: config
+                env.CATTLE_TEST_CONFIG = "${workPath}${filename}"
+              }
+              dir ("./tfp-automation") {
+                sh "docker build . -f Dockerfile -t ${tfpImageName}"
+                sh "docker volume create --name ${setupVolume}"
+              }
+
+              dir ("./") {
+                sh "./rancher/tests/v2/validation/configure.sh"
+                sh "docker build . -f ./rancher/tests/v2/validation/Dockerfile.validation -t ${imageName}"
+                sh "docker volume create --name ${validationVolume}"
+              }
+              
+              sh returnStdout: true, script: 'wget -qO ./yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64'
+              sh returnStdout:true, script: 'chmod a+x ./yq'
+
+            }
+            stage("Build TFP Environment") {
+              try {
+                sh """
+                    docker run --name ${buildTFPContainer} -t -v ${homePath}key.pem:${rootPath}key.pem --env-file ${envFile} ${imageName} sh -c "
+                    /root/go/bin/gotestsum --format standard-verbose --packages=${testsDir} --junitfile ${testResultsOut} --jsonfile ${testResultsJSON} -- -timeout=${timeout} -v ${params.TEST_CASE};
+                    ${rootPath}pipeline/scripts/build_qase_reporter.sh;
+                    if [ -f ${rootPath}reporter ]; then ${rootPath}reporter; fi"
+                """
+              } catch(err) {
+                  sh "docker stop ${buildTestContainer}"
+                  sh "docker rm -v ${buildTestContainer}"
+                  sh "docker volume rm -f ${validationVolume}"
+                  error "Build Environment had failures."
+              }
+            }
+            try {
+              stage('Run Test Validations') {
+                  try {
+                    jobs = [:]
+                    
+                    // copy updated config file from the build test container
+                    sh "docker cp ${buildTestContainer}:${workPath}${filename} ./"
+                    sh "docker cp ${buildTestContainer}:${workPath}${qaseRun} ./"
+                    sh "./${qaseRun} --startRun=true"
+
+                    def testRunID = sh (  
+                      script: "./yq '.id'  ./${testRunConfig}",
+                      returnStdout: true
+                    ).trim()
+
+                    def mainRancherConfigPath = "./${filename}"
+
+                    sh "./yq e '.rancher.cleanup = true' -i ${mainRancherConfigPath}"
+
+                    if ("${env.TAGS}" != "") {
+                      def configYaml = readFile(file: "${mainRancherConfigPath}")
+
+                      def goValidationParams = [
+                        string(name: 'TIMEOUT', value: timeout),
+                        text(name: 'CONFIG', value: configYaml),
+                        string(name: 'REPO', value: "${rancherRepo}"),
+                        string(name: 'BRANCH', value: "${branch}"),
+                        string(name: 'QASE_TEST_RUN_ID', value: "${testRunID}"),
+                        string(name: 'TEST_PACKAGE', value: "${env.TEST_PACKAGE}"),
+                        string(name: 'TAGS', value: "${env.TAGS}"),
+                        string(name: 'GOTEST_TESTCASE', value: "${env.GOTEST_TESTCASE}"),
+                      ]
+
+                      jobs["proxy-test-validation"] = { build job: individualJob, parameters: goValidationParams }
+                    
+                    }
+                    parallel jobs
+                  } catch(err) {
+                    echo "Test validations had failures: " + err
+                  }
+                sh "./${qaseRun} --startRun=false"
+              }
+            } catch(err) {
+              echo "Failures " + err
+            }
+            
+            stage('Cleanup Rancher Environment') {
+              if ("${env.CLEANUP_RANCHER}" == "True" || "${env.CLEANUP_RANCHER}" == "true") {
+                try {
+                    sh "docker run --volumes-from ${buildTestContainer} --name ${cleanupTestContainer} -t --env-file ${envFile} " +
+                    "${imageName} sh -c \"cd ${tfpRootPath}modules/proxy && terraform destroy --auto-approve\""
+                } catch(err) {
+                  sh "docker stop ${buildTestContainer}"
+                  sh "docker rm -v ${buildTestContainer}"
+                  sh "docker stop ${buildTestContainer}"
+                  sh "docker rm -v ${buildTestContainer}"
+                  sh "docker stop ${cleanupTestContainer}"
+                  sh "docker rm -v ${cleanupTestContainer}"
+                  sh "docker rmi -f ${imageName}"
+                  sh "docker volume rm -f ${validationVolume}"
+                  error "Cleanup had failures."
+                }
+              }
+            }
+            stage('Clean Up Images and Volume') {
+              echo 'Cleaning test images and volume.'
+              sh "docker stop ${buildTestContainer}"
+              sh "docker rm -v ${buildTestContainer}"
+              if ("${env.CLEANUP_RANCHER}" == "True" || "${env.CLEANUP_RANCHER}" == "true") {
+                sh "docker stop ${cleanupTestContainer}"
+                sh "docker rm -v ${cleanupTestContainer}"
+              }
+              sh "docker rmi -f ${imageName}"
+              sh "docker volume rm -f ${validationVolume}"
+            }
+          } // dir 
+        } // withEnv
+      } // creds
+    } // folder properties
+  } // wrap 
+} // node
