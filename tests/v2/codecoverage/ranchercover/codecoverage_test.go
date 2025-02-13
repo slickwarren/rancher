@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/rancher/rancher/tests/v2/actions/codecoverage"
+	"github.com/rancher/rancher/tests/v2/codecoverage"
 	"github.com/rancher/shepherd/clients/rancher"
 	"github.com/rancher/shepherd/pkg/session"
 	"github.com/stretchr/testify/require"
